@@ -7694,7 +7694,8 @@ CONTAINS
     INTEGER(INTG), OPTIONAL, INTENT(IN) :: componentType !<The components type to interpolate
     !Local Variables
     INTEGER(INTG) :: component_idx,local_derivative_idx,version_idx,global_derivative_idx,element_node_idx,node_idx, &
-      & element_parameter_idx,dof_idx,node_scaling_dof_idx,scaling_idx,startComponentIdx,endComponentIdx
+      & element_parameter_idx,dof_idx,node_scaling_dof_idx,scaling_idx,startComponentIdx,endComponentIdx, num_gauss_pts, &
+      & gauss_idx
     REAL(DP), POINTER :: FIELD_PARAMETER_SET_DATA(:),SCALE_FACTORS(:)
     TYPE(BASIS_TYPE), POINTER :: BASIS
     TYPE(COORDINATE_SYSTEM_TYPE), POINTER :: COORDINATE_SYSTEM
@@ -7831,7 +7832,14 @@ CONTAINS
                     CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                   END SELECT
                 CASE(FIELD_GAUSS_POINT_BASED_INTERPOLATION)
-                  CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+                  num_gauss_pts = INTERPOLATION_PARAMETERS%FIELD_VARIABLE%COMPONENTS(component_idx)%PARAM_TO_DOF_MAP% &
+                    & GAUSS_POINT_PARAM2DOF_MAP%NUMBER_OF_GAUSS_POINT_PARAMETERS
+                  INTERPOLATION_PARAMETERS%NUMBER_OF_PARAMETERS(component_idx)=num_gauss_pts
+                  DO gauss_idx=1,num_gauss_pts
+                    dof_idx = INTERPOLATION_PARAMETERS%FIELD_VARIABLE%COMPONENTS(component_idx)%PARAM_TO_DOF_MAP% &
+                    & GAUSS_POINT_PARAM2DOF_MAP%GAUSS_POINTS(gauss_idx,1)
+                    INTERPOLATION_PARAMETERS%PARAMETERS(gauss_idx, component_idx)=FIELD_PARAMETER_SET_DATA(dof_idx)
+                  ENDDO
                 CASE(FIELD_DATA_POINT_BASED_INTERPOLATION)
                   CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
                 CASE DEFAULT
@@ -13170,19 +13178,19 @@ CONTAINS
                                   CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                                 END SELECT
                               ELSE
-                                LOCAL_ERROR="The from field variable component interpolation type of "// &
+                                LOCAL_ERROR="The from field variable data type of "// &
+                                & TRIM(NUMBER_TO_VSTRING(FROM_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))// &
+                                & " does not match the to variable data type of "// &
+                                & TRIM(NUMBER_TO_VSTRING(TO_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))//"."
+                                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+                              ENDIF
+                            ELSE
+                              LOCAL_ERROR="The from field variable component interpolation type of "// &
                                   & TRIM(NUMBER_TO_VSTRING(FROM_FIELD_VARIABLE%COMPONENTS(FROM_COMPONENT_NUMBER)% &
                                   & INTERPOLATION_TYPE,"*",ERR,ERROR))// &
                                   & " does not match the to variable component interpolation type of "// &
                                   & TRIM(NUMBER_TO_VSTRING(TO_FIELD_VARIABLE%COMPONENTS(TO_COMPONENT_NUMBER)% &
                                   & INTERPOLATION_TYPE,"*",ERR,ERROR))//"."
-                                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-                              ENDIF
-                            ELSE
-                              LOCAL_ERROR="The from field variable data type of "// &
-                                & TRIM(NUMBER_TO_VSTRING(FROM_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))// &
-                                & " does not match the to variable data type of "// &
-                                & TRIM(NUMBER_TO_VSTRING(TO_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))//"."
                               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                             ENDIF
                           ELSE
