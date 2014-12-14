@@ -3086,6 +3086,12 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSEquationsSet_StrainInterpolateXiObj
   END INTERFACE CMISSEquationsSet_StrainInterpolateXi
 
+  !>Calculate the strain tensor at a given gauss point location for CellML linking.
+  INTERFACE CMISSEquationsSet_StressStrainEvaluateGaussCellML
+    MODULE PROCEDURE CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber
+    MODULE PROCEDURE CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj
+  END INTERFACE CMISSEquationsSet_StressStrainEvaluateGaussCellML
+
   !>Gets the equations set analytic user parameter
   INTERFACE CMISSEquationsSet_AnalyticUserParamGet
     MODULE PROCEDURE CMISSEquationsSet_AnalyticUserParamGetNumber
@@ -3141,6 +3147,8 @@ MODULE OPENCMISS
   PUBLIC CMISSEquationsSet_SpecificationGet,CMISSEquationsSet_SpecificationSet
 
   PUBLIC CMISSEquationsSet_StrainInterpolateXi
+
+  PUBLIC CMISSEquationsSet_StressStrainEvaluateGaussCellML
 
   PUBLIC CMISSEquationsSet_AnalyticUserParamSet,CMISSEquationsSet_AnalyticUserParamGet
 
@@ -25652,7 +25660,7 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by a user number.
-  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,xi,values,err)
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,xi,values,stress2PK,err)
 
     !Argument variables
     INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the equations set.
@@ -25660,6 +25668,7 @@ CONTAINS
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
+    REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
     !Local variables
     TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet
@@ -25676,7 +25685,7 @@ CONTAINS
       CALL EQUATIONS_SET_USER_NUMBER_FIND(equationsSetUserNumber,region,equationsSet,err,error,*999)
       IF(ASSOCIATED(equationsSet)) THEN
         CALL EquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi, &
-          & values,err,error,*999)
+          & values,stress2PK,err,error,*999)
       ELSE
         localError="An equations set with a user number of "//TRIM(NumberToVstring(equationsSetUserNumber,"*", &
           & err,error))//" does not exist on region number "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//"."
@@ -25696,24 +25705,27 @@ CONTAINS
 
   END SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber
 
+
+
   !
   !================================================================================================================================
   !
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by an object.
-  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,values,err)
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,values,stress2PK,err)
 
     !Argument variables
     TYPE(CMISSEquationsSetType), INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
+    REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
 
     CALL Enters("CMISSEquationsSet_StrainInterpolateXiObj",err,error,*999)
 
     CALL EquationsSet_StrainInterpolateXi(equationsSet%equations_set,userElementNumber,xi, &
-      & values,err,error,*999)
+      & values,stress2PK,err,error,*999)
 
     CALL Exits("CMISSEquationsSet_StrainInterpolateXiObj")
     RETURN
@@ -25723,6 +25735,87 @@ CONTAINS
     RETURN
 
   END SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj
+
+    !
+  !================================================================================================================================
+  !
+
+  !>Calculate the strain tensor at a given element xi location, for an equations set identified by a user number.
+  SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,gaussPoint,strain,stress2PK,err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the equations set.
+    INTEGER(INTG), INTENT(IN) :: equationsSetUserNumber !<The user number of the equations set to calculate the strain for.
+    INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
+    INTEGER(INTG), INTENT(IN) :: gaussPoint !<The gauss point index.
+    REAL(DP), INTENT(OUT) :: strain(6) !<The interpolated strain tensor values.
+    REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet
+    TYPE(REGION_TYPE), POINTER :: region
+    TYPE(VARYING_STRING) :: localError
+
+    CALL Enters("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber",err,error,*999)
+
+    NULLIFY(equationsSet)
+    NULLIFY(region)
+
+    CALL REGION_USER_NUMBER_FIND(regionUserNumber,region,err,error,*999)
+    IF(ASSOCIATED(region)) THEN
+      CALL EQUATIONS_SET_USER_NUMBER_FIND(equationsSetUserNumber,region,equationsSet,err,error,*999)
+      IF(ASSOCIATED(equationsSet)) THEN
+        CALL EquationsSet_StressStrainEvaluateGaussCellML(equationsSet,userElementNumber,gaussPoint,strain,stress2PK, err,error,*999)
+      ELSE
+        localError="An equations set with a user number of "//TRIM(NumberToVstring(equationsSetUserNumber,"*", &
+          & err,error))//" does not exist on region number "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//"."
+        CALL FlagError(localError,err,error,*999)
+      END IF
+    ELSE
+      localError="A region with an user number of "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//" does not exist."
+      CALL FlagError(localError,err,error,*999)
+    END IF
+
+    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber")
+    RETURN
+999 CALL Errors("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber",err,error)
+    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber")
+    CALL CmissHandleError(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber
+
+
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculate the strain tensor at a given element xi location, for an equations set identified by an object.
+  SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj(equationsSet,userElementNumber,gaussPoint,strain,stress2PK,err)
+
+    !Argument variables
+    TYPE(CMISSEquationsSetType), INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
+    INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
+    INTEGER(INTG), INTENT(IN) :: gaussPoint !<The element xi to interpolate the field at.
+    REAL(DP), INTENT(OUT) :: strain(6) !<The interpolated strain tensor values.
+    REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress tensor values.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+
+    CALL Enters("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj",err,error,*999)
+
+    CALL EquationsSet_StressStrainEvaluateGaussCellML(equationsSet%equations_set,userElementNumber,gaussPoint, &
+      & strain,stress2PK,err,error,*999)
+
+    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj")
+    RETURN
+999 CALL Errors("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj",err,error)
+    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj")
+    CALL CmissHandleError(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj
+
 
 !!==================================================================================================================================
 !!
