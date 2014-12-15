@@ -2156,6 +2156,24 @@ CONTAINS
         PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
         PIOLA_TENSOR(2,2)=2.0_DP*(C(1)+C(2)*(AZL(3,3)+AZL(1,1))+P*AZU(2,2))
 
+      CASE(EQUATIONS_SET_TRANSVERSE_ISOTROPIC_GUCCIONE_SUBTYPE)
+        ! W=C1*exp*(Q) + p(J-1)
+        ! Q=C2*E(1,1)^2 + C3*(E(2,2)^2+E(3,3)^2+2*E(2,3)*E(3,2)) + 2*C4*(E(1,2)*E(2,1)+E(1,3)*E(3,1))
+        Q=C(2)*E(1,1)**2 + C(3)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2) + 2.0_DP*C(4)*(E(1,2)**2+E(1,3)**2)
+        TEMPTERM=C(1)*exp(Q) ! iso term
+        PIOLA_TENSOR(1,1) = C(2) * E(1,1)
+        PIOLA_TENSOR(2,2) = C(3) * E(2,2)
+        PIOLA_TENSOR(3,3) = C(3) * E(3,3)
+        PIOLA_TENSOR(1,2) = C(4) * E(1,2)
+        PIOLA_TENSOR(2,1) = PIOLA_TENSOR(1,2)
+        PIOLA_TENSOR(1,3) = C(4) * E(1,3)
+        PIOLA_TENSOR(3,1) = PIOLA_TENSOR(1,3)
+        PIOLA_TENSOR(3,2) = C(3) * E(2,3)
+        PIOLA_TENSOR(2,3) = PIOLA_TENSOR(3,2)
+        PIOLA_TENSOR = PIOLA_TENSOR * 2.0_DP * TEMPTERM
+        ! pressure terms
+        PIOLA_TENSOR = PIOLA_TENSOR + 2.0_DP*p*Jznu*AZU   ! is Jznu required here, or is it omitted everywhere else?
+
       CASE(EQUATIONS_SET_ORTHOTROPIC_MATERIAL_HOLZAPFEL_OGDEN_SUBTYPE)
         C(1)=MATERIALS_INTERPOLATED_POINT%VALUES(1,1) !a
         C(2)=MATERIALS_INTERPOLATED_POINT%VALUES(2,1) !b
