@@ -25660,7 +25660,8 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by a user number.
-  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,xi,values,stress2PK,err)
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,xi,&
+    &values,stress2PK,stressCauchy,err)
 
     !Argument variables
     INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the equations set.
@@ -25669,6 +25670,7 @@ CONTAINS
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
+    REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
     !Local variables
     TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet
@@ -25712,7 +25714,7 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by an object.
-  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,values,stress2PK,err)
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,values,stress2PK,stressCauchy,err)
 
     !Argument variables
     TYPE(CMISSEquationsSetType), INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
@@ -25720,6 +25722,7 @@ CONTAINS
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress tensor values.
+    REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
 
     CALL Enters("CMISSEquationsSet_StrainInterpolateXiObj",err,error,*999)

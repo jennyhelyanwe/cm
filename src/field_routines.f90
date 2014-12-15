@@ -13252,32 +13252,18 @@ CONTAINS
                                 END SELECT
                               ELSE
                                 LOCAL_ERROR="The from field variable data type of "// &
-<<<<<<< HEAD
-                                & TRIM(NUMBER_TO_VSTRING(FROM_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))// &
-                                & " does not match the to variable data type of "// &
-                                & TRIM(NUMBER_TO_VSTRING(TO_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))//"."
-=======
                                   & TRIM(NUMBER_TO_VSTRING(FROM_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))// &
                                   & " does not match the to variable data type of "// &
                                   & TRIM(NUMBER_TO_VSTRING(TO_FIELD_VARIABLE%DATA_TYPE,"*",ERR,ERROR))//"."
->>>>>>> 8e57f92f39ae9260645116dc4a07c8b36432343b
                                 CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                               ENDIF
                             ELSE
                               LOCAL_ERROR="The from field variable component interpolation type of "// &
-<<<<<<< HEAD
-                                  & TRIM(NUMBER_TO_VSTRING(FROM_FIELD_VARIABLE%COMPONENTS(FROM_COMPONENT_NUMBER)% &
-                                  & INTERPOLATION_TYPE,"*",ERR,ERROR))// &
-                                  & " does not match the to variable component interpolation type of "// &
-                                  & TRIM(NUMBER_TO_VSTRING(TO_FIELD_VARIABLE%COMPONENTS(TO_COMPONENT_NUMBER)% &
-                                  & INTERPOLATION_TYPE,"*",ERR,ERROR))//"."
-=======
                                 & TRIM(NUMBER_TO_VSTRING(FROM_FIELD_VARIABLE%COMPONENTS(FROM_COMPONENT_NUMBER)% &
                                 & INTERPOLATION_TYPE,"*",ERR,ERROR))// &
                                 & " does not match the to variable component interpolation type of "// &
                                 & TRIM(NUMBER_TO_VSTRING(TO_FIELD_VARIABLE%COMPONENTS(TO_COMPONENT_NUMBER)% &
                                 & INTERPOLATION_TYPE,"*",ERR,ERROR))//"."
->>>>>>> 8e57f92f39ae9260645116dc4a07c8b36432343b
                               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                             ENDIF
                            ELSE

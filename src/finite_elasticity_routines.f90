@@ -1980,13 +1980,14 @@ CONTAINS
   !
 
   !>Calculate the Green-Lagrange strain tensor at a given element xi location.
-  SUBROUTINE FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,values,stress2PK, err,error,*)
+  SUBROUTINE FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,values,stress2PK,stressCauchy,err,error,*)
     ! Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
     INTEGER(INTG), INTENT(IN) :: userElementNumber
     REAL(DP), INTENT(IN) :: xi(:)
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
-    REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated strain tensor values.
+    REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
+    REAL(DP), INTENT(OUT) :: stressCauchy(6) !<The interpolated cauchy stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string.
     ! Local variables
@@ -2007,7 +2008,8 @@ CONTAINS
     INTEGER(INTG) :: numberOfDimensions,numberOfXi
     INTEGER(INTG) :: localElementNumber,i
     INTEGER(INTG) :: pressure_component
-    REAL(DP) :: dZdNu(3,3),dZdNuT(3,3),AZL(3,3),E(3,3), AZU(3,3), IDENTITY(3,3),PIOLA_TENSOR(3,3), P,AZL_SQUARED(3,3)
+    REAL(DP) :: dZdNu(3,3),dZdNuT(3,3),AZL(3,3),E(3,3), AZU(3,3), IDENTITY(3,3),PIOLA_TENSOR(3,3), CAUCHY_TENSOR(3,3),&
+      & P,AZL_SQUARED(3,3), TEMP(3,3)
     REAL(DP) :: I1,I2,I3
     REAL(DP) :: JXXi, Jznu
     REAL(DP), DIMENSION (:), POINTER :: C !Parameters for constitutive laws
@@ -2143,68 +2145,8 @@ CONTAINS
       !Evaluate stresses based on equation set subtype.
       MATERIALS_INTERPOLATED_POINT=>EQUATIONS%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR
 
-      SELECT CASE(equationsSet%subtype)
-      CASE(EQUATIONS_SET_MOONEY_RIVLIN_SUBTYPE)
-        C => MATERIALS_INTERPOLATED_POINT%VALUES(:,1)
-        PIOLA_TENSOR(1,3)=2.0_DP*(       C(2)*(-AZL(3,1))        +P*AZU(1,3))
-        PIOLA_TENSOR(2,3)=2.0_DP*(       C(2)*(-AZL(3,2))        +P*AZU(2,3))
-        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
-        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
-        PIOLA_TENSOR(3,3)=2.0_DP*(C(1)+C(2)*(AZL(1,1)+AZL(2,2))+P*AZU(3,3))
-        PIOLA_TENSOR(1,1)=2.0_DP*(C(1)+C(2)*(AZL(2,2)+AZL(3,3))+P*AZU(1,1))
-        PIOLA_TENSOR(1,2)=2.0_DP*(     C(2)*(-AZL(2,1))        +P*AZU(1,2))
-        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
-        PIOLA_TENSOR(2,2)=2.0_DP*(C(1)+C(2)*(AZL(3,3)+AZL(1,1))+P*AZU(2,2))
-
-      CASE(EQUATIONS_SET_TRANSVERSE_ISOTROPIC_GUCCIONE_SUBTYPE)
-        ! W=C1*exp*(Q) + p(J-1)
-        ! Q=C2*E(1,1)^2 + C3*(E(2,2)^2+E(3,3)^2+2*E(2,3)*E(3,2)) + 2*C4*(E(1,2)*E(2,1)+E(1,3)*E(3,1))
-        Q=C(2)*E(1,1)**2 + C(3)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2) + 2.0_DP*C(4)*(E(1,2)**2+E(1,3)**2)
-        TEMPTERM=C(1)*EXP(Q) ! iso term
-        PIOLA_TENSOR(1,1) = C(2) * E(1,1)
-        PIOLA_TENSOR(2,2) = C(3) * E(2,2)
-        PIOLA_TENSOR(3,3) = C(3) * E(3,3)
-        PIOLA_TENSOR(1,2) = C(4) * E(1,2)
-        PIOLA_TENSOR(2,1) = PIOLA_TENSOR(1,2)
-        PIOLA_TENSOR(1,3) = C(4) * E(1,3)
-        PIOLA_TENSOR(3,1) = PIOLA_TENSOR(1,3)
-        PIOLA_TENSOR(3,2) = C(3) * E(2,3)
-        PIOLA_TENSOR(2,3) = PIOLA_TENSOR(3,2)
-        PIOLA_TENSOR = PIOLA_TENSOR * 2.0_DP * TEMPTERM
-        ! pressure terms
-        PIOLA_TENSOR = PIOLA_TENSOR + 2.0_DP*p*Jznu*AZU   ! is Jznu required here, or is it omitted everywhere else?
-
-      CASE(EQUATIONS_SET_ORTHOTROPIC_MATERIAL_HOLZAPFEL_OGDEN_SUBTYPE)
-        C(1)=MATERIALS_INTERPOLATED_POINT%VALUES(1,1) !a
-        C(2)=MATERIALS_INTERPOLATED_POINT%VALUES(2,1) !b
-        C(3)=MATERIALS_INTERPOLATED_POINT%VALUES(3,1) !a_f
-        C(4)=MATERIALS_INTERPOLATED_POINT%VALUES(4,1) !a_s
-        C(5)=MATERIALS_INTERPOLATED_POINT%VALUES(5,1) !b_f
-        C(6)=MATERIALS_INTERPOLATED_POINT%VALUES(6,1) !b_s
-        C(7)=MATERIALS_INTERPOLATED_POINT%VALUES(7,1) !a_fs
-        C(8)=MATERIALS_INTERPOLATED_POINT%VALUES(8,1) !b_fs
-        I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
-        TEMPTERM=C(1)*EXP(C(2)*(I1-3.0_DP))
-        PIOLA_TENSOR(1,1)=-P*AZU(1,1)+TEMPTERM
-        IF(AZL(1,1)>1.0_DP) THEN
-          PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+2.0_DP*C(3)*(AZL(1,1)-1.0_DP)*EXP(C(5)*(AZL(1,1)-1.0_DP)**2.0_DP)
-        END IF
-        PIOLA_TENSOR(1,2)=-P*AZU(1,2)+C(7)*AZL(1,2)*EXP(C(8)*AZL(1,2)**2.0_DP)
-        PIOLA_TENSOR(1,3)=-P*AZU(1,3)
-        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
-        PIOLA_TENSOR(2,2)=-P*AZU(2,2)+TEMPTERM
-        IF(AZL(2,2)>1.0_DP) THEN
-          PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+2.0_DP*C(4)*(AZL(2,2)-1.0_DP)*EXP(C(6)*(AZL(2,2)-1.0_DP)**2.0_DP)
-        END IF
-        PIOLA_TENSOR(2,3)=-P*AZU(2,3)
-        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
-        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
-        PIOLA_TENSOR(3,3)=-P*AZU(3,3)+TEMPTERM
-      CASE DEFAULT
-        local_error = "Equations set subtype "//TRIM(NUMBER_TO_VSTRING(equationsSet%subtype,"*",err,error))//&
-        & " is not implemented for evaluating stress at gauss points."
-        CALL flag_error(local_error, err, error, *999)
-      END SELECT
+      CALL FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE(equationsSet%subType,C,MATERIALS_INTERPOLATED_POINT,&
+        & E,AZL,AZU,Jznu,P,PIOLA_TENSOR,err, error, *999)
     ENDIF
 
     stress2PK(1)=PIOLA_TENSOR(1,1)
@@ -2213,6 +2155,19 @@ CONTAINS
     stress2PK(4)=PIOLA_TENSOR(2,2)
     stress2PK(5)=PIOLA_TENSOR(2,3)
     stress2PK(6)=PIOLA_TENSOR(3,3)
+
+    CALL MATRIX_PRODUCT(dZdNu,PIOLA_TENSOR,TEMP,ERR,ERROR,*999)
+    CALL MATRIX_PRODUCT(TEMP,dZdNuT,CAUCHY_TENSOR,ERR,ERROR,*999)
+
+    CAUCHY_TENSOR=CAUCHY_TENSOR/Jznu
+    NULLIFY(C)
+
+    stressCauchy(1)=CAUCHY_TENSOR(1,1)
+    stressCauchy(2)=CAUCHY_TENSOR(1,2)
+    stressCauchy(3)=CAUCHY_TENSOR(1,3)
+    stressCauchy(4)=CAUCHY_TENSOR(2,2)
+    stressCauchy(5)=CAUCHY_TENSOR(2,3)
+    stressCauchy(6)=CAUCHY_TENSOR(3,3)
 
     CALL Exits("FiniteElasticity_StrainInterpolateXi")
     RETURN
@@ -2658,48 +2613,6 @@ CONTAINS
     ENDDO
 
     SELECT CASE(EQUATIONS_SET_SUBTYPE)
-    CASE(EQUATIONS_SET_NEARLY_INCOMPRESSIBLE_MOONEY_RIVLIN_SUBTYPE)
-    !Form of constitutive model is:
-    ! W_hat=c1*(I1_hat-3)+c2*(I2_hat-3)+p*J*C^(-1) + W^v(J)
-      ! take W^v(J) = 1/2 * kappa * (J-1)^2
-      WV_PRIME = C(3)*(Jznu - 1.0_DP)
-      !compute the invariants, I3 a few lines up
-      I1 = AZL(1,1) + AZL(2,2) + AZL(3,3)
-      CALL MATRIX_PRODUCT(AZL,AZL,AZL_SQUARED,ERR,ERROR,*999)
-      I2 = 0.5_DP * (I1**2 - AZL_SQUARED(1,1) - AZL_SQUARED(2,2) - AZL_SQUARED(3,3))
-      
-      PIOLA_TENSOR=2.0_DP*Jznu**(-2.0_DP/3.0_DP)*((C(1)+C(2)*I1)*IDENTITY-C(2)*AZL &
-        & -(C(1)*I1+2.0_DP*C(2)*I2-1.5_DP*WV_PRIME*Jznu**(5.0_DP/3.0_DP))/3.0_DP*AZU) 
-   
-    CASE(EQUATIONS_SET_INCOMPRESSIBLE_MOONEY_RIVLIN_SUBTYPE)
-    !Form of constitutive model is:
-    ! W_hat=c1*(I1_hat-3)+c2*(I2_hat-3)+p*J*C^(-1)
-    
-      !compute the invariants, I3 a few lines up
-      I1 = AZL(1,1) + AZL(2,2) + AZL(3,3)
-      CALL MATRIX_PRODUCT(AZL,AZL,AZL_SQUARED,ERR,ERROR,*999)
-      I2 = 0.5_DP * (I1**2 - AZL_SQUARED(1,1) - AZL_SQUARED(2,2) - AZL_SQUARED(3,3))
-      
-      !compute 2PK
-!      PIOLA_TENSOR(1,1) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (C(1) + C(2) * I1 - C(2) * AZL(1,1) &
-!                          & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(1,1))
-!      PIOLA_TENSOR(1,2) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (-C(2) * AZL(1,2) &
-!                          & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(1,2))
-!      PIOLA_TENSOR(1,3) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (-C(2) * AZL(1,3) &
-!                          & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(1,3))
-!      PIOLA_TENSOR(2,1) = PIOLA_TENSOR(1,2)
-!      PIOLA_TENSOR(2,2) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (C(1) + C(2) * I1 - C(2) * AZL(2,2) &
-!                          & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(2,2))
-!      PIOLA_TENSOR(2,3) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (-C(2) * AZL(2,3) &
-!                          & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(2,3))
-!      PIOLA_TENSOR(3,1) = PIOLA_TENSOR(1,3)
-!      PIOLA_TENSOR(3,2) = PIOLA_TENSOR(2,3)
-!      PIOLA_TENSOR(3,3) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (C(1) + C(2) * I1 - C(2) * AZL(3,3) &
-!                          & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(3,3))       
-      !????
-      PIOLA_TENSOR=2.0_DP*Jznu**(-2.0_DP/3.0_DP)*((C(1)+C(2)*I1)*IDENTITY-C(2)*AZL &
-        & -(C(1)*I1+2.0_DP*C(2)*I2-1.5_DP*P*Jznu**(5.0_DP/3.0_DP))/3.0_DP*AZU) 
-                              
     CASE(EQUATIONS_SET_MOONEY_RIVLIN_SUBTYPE,EQUATIONS_SET_MOONEY_RIVLIN_ACTIVECONTRACTION_SUBTYPE,EQUATIONS_SET_MEMBRANE_SUBTYPE, &
       & EQUATIONS_SET_NO_SUBTYPE, &
       & EQUATIONS_SET_INCOMPRESSIBLE_FINITE_ELASTICITY_DARCY_SUBTYPE,EQUATIONS_SET_STANDARD_MONODOMAIN_ELASTICITY_SUBTYPE, &
@@ -2739,23 +2652,23 @@ CONTAINS
       !the active stress is stored inside the independent field that has been set up in the user program.
       !for generality we could set up 3 components in independent field for 3 different active stress components
       !1 isotropic value assumed here.
-        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
+        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
           &  FIELD_U_VARIABLE_TYPE,&
           &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,1,ACTIVE_STRESS_11,ERR,ERROR,*999) ! get the independent field stress value
 
-        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
+        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
           &  FIELD_U_VARIABLE_TYPE,&
           &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,2,ACTIVE_STRESS_22,ERR,ERROR,*999) ! get the independent field stress value
 
-        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
+        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
           &  FIELD_U_VARIABLE_TYPE,&
           &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,3,ACTIVE_STRESS_33,ERR,ERROR,*999) ! get the independent field stress value
 
         PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+ACTIVE_STRESS_11
         PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+ACTIVE_STRESS_22
         PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+ACTIVE_STRESS_33
-      ENDIF 
-     
+      ENDIF
+
       IF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_STANDARD_MONODOMAIN_ELASTICITY_SUBTYPE) THEN
         ! add the active stress component (stored in the independent field) to the 1,1-direction of the 2-PK tensor
         PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+INDEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
@@ -2773,16 +2686,16 @@ CONTAINS
           & FIELD_VALUES_SET_TYPE,dof_idx,VALUE,ERR,ERROR,*999)
         !divide by lambda and multiply by P_max
         VALUE=VALUE/SQRT(AZL(1,1))*C(5)
-        
+
         !HINDAWI paper - force-length relation at the continuum level
-!        if((SQRT(AZL(1,1))>0.72_DP).AND.(SQRT(AZL(1,1))<1.68_DP)) then
-!          VALUE=VALUE*(-25.0_DP/4.0_DP*AZL(1,1)/1.2_DP/1.2_DP + 25.0_DP/2.0_DP*SQRT(AZL(1,1))/1.2_DP - 5.25_DP)
-!        else
-!          VALUE=0.0_DP
-!        endif
-        
+        !if((SQRT(AZL(1,1))>0.72_DP).AND.(SQRT(AZL(1,1))<1.68_DP)) then
+        ! VALUE=VALUE*(-25.0_DP/4.0_DP*AZL(1,1)/1.2_DP/1.2_DP + 25.0_DP/2.0_DP*SQRT(AZL(1,1))/1.2_DP - 5.25_DP)
+        !else
+        ! VALUE=0.0_DP
+        !endif
+
         PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+VALUE
-        
+
         IF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_MONODOMAIN_ELASTICITY_W_TITIN_SUBTYPE) THEN
           IF(PIOLA_TENSOR(1,1).GE.0) THEN
             dof_idx=FIELD_VARIABLE%COMPONENTS(2)%PARAM_TO_DOF_MAP%GAUSS_POINT_PARAM2DOF_MAP%GAUSS_POINTS(GAUSS_POINT_NUMBER, &
@@ -2818,7 +2731,381 @@ CONTAINS
         ENDIF
       ENDIF
 
+    CASE (EQUATIONS_SET_COMPRESSIBLE_FINITE_ELASTICITY_SUBTYPE,EQUATIONS_SET_ELASTICITY_DARCY_INRIA_MODEL_SUBTYPE, &
+      & EQUATIONS_SET_COMPRESSIBLE_ACTIVECONTRACTION_SUBTYPE, &
+      & EQUATIONS_SET_INCOMPRESSIBLE_ELASTICITY_DRIVEN_DARCY_SUBTYPE,EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE)
+      !Form of constitutive model is:
+      ! W=c1*(I1-3)+c2*(I2-3)+c3*(J-1)^2   (this is actually nearly incompressible)
+      C(1)=MATERIALS_INTERPOLATED_POINT%VALUES(1,1)
+      C(2)=MATERIALS_INTERPOLATED_POINT%VALUES(2,1)
 
+      PIOLA_TENSOR(1,1)=C(1)+C(2)*(AZL(2,2)+AZL(3,3))
+      PIOLA_TENSOR(1,2)=C(2)*(-AZL(2,1))
+      PIOLA_TENSOR(1,3)=C(2)*(-AZL(3,1))
+      PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
+      PIOLA_TENSOR(2,2)=C(1)+C(2)*(AZL(3,3)+AZL(1,1))
+      PIOLA_TENSOR(2,3)=C(2)*(-AZL(3,2))
+      PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
+      PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
+      PIOLA_TENSOR(3,3)=C(1)+C(2)*(AZL(1,1)+AZL(2,2))
+      PIOLA_TENSOR=PIOLA_TENSOR*2.0_DP
+
+      IF(DIAGNOSTICS1) THEN
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  C(1) = ",C(1),ERR,ERROR,*999)
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  C(2) = ",C(2),ERR,ERROR,*999)
+        CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
+          & 3,3,AZL,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    AZL','(",I1,",:)',' :",3(X,E13.6))', &
+          & '(17X,3(X,E13.6))',ERR,ERROR,*999)
+      ENDIF
+
+      IF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_COMPRESSIBLE_ACTIVECONTRACTION_SUBTYPE) THEN
+
+        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
+          &  FIELD_U_VARIABLE_TYPE,&
+          &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,1,ACTIVE_STRESS_11,ERR,ERROR,*999) ! get the independent field stress value
+
+        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
+          &  FIELD_U_VARIABLE_TYPE,&
+          &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,2,ACTIVE_STRESS_22,ERR,ERROR,*999) ! get the independent field stress value
+
+        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
+          &  FIELD_U_VARIABLE_TYPE,&
+          &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,3,ACTIVE_STRESS_33,ERR,ERROR,*999) ! get the independent field stress value
+
+        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+ACTIVE_STRESS_11
+        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+ACTIVE_STRESS_22
+        PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+ACTIVE_STRESS_33
+      ENDIF
+      IF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_COMPRESSIBLE_FINITE_ELASTICITY_SUBTYPE .OR. &
+        & EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_COMPRESSIBLE_ACTIVECONTRACTION_SUBTYPE) THEN
+        C(3)=MATERIALS_INTERPOLATED_POINT%VALUES(3,1)
+        PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*C(3)*(I3-SQRT(I3))*AZU
+      ELSEIF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_ELASTICITY_DARCY_INRIA_MODEL_SUBTYPE.OR. &
+        & EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_INCOMPRESSIBLE_ELASTICITY_DRIVEN_DARCY_SUBTYPE .OR. &
+        & EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE) THEN
+        SELECT CASE (EQUATIONS_SET_SUBTYPE)
+        CASE (EQUATIONS_SET_ELASTICITY_DARCY_INRIA_MODEL_SUBTYPE) !Nearly incompressible
+          C(3)=MATERIALS_INTERPOLATED_POINT%VALUES(3,1)
+          !Starting point for this models is above compressible form of 2nd PK tensor
+          !Adjust for the modified Ciarlet-Geymonat expression: Eq.(22) of the INRIA paper
+          ! Question is: What deviation is to be penalized : (J-1) or (J-1-m/rho) ??? Probably the latter !
+          ! However, m/rho is a given 'constant' and, upon differentiation, drops out.
+          ! But it is important to retain I3 = J^2, since J ~ 1 + m/rho /= 1
+          PIOLA_TENSOR=PIOLA_TENSOR+C(3)*(SQRT(I3)-1.0_DP)*AZU
+          DARCY_MASS_INCREASE_ENTRY = 5 !fifth entry
+        CASE (EQUATIONS_SET_INCOMPRESSIBLE_ELASTICITY_DRIVEN_DARCY_SUBTYPE, &
+          &  EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE) !Incompressible
+          !Constitutive model: W=c1*(I1-3)+c2*(I2-3)+p*(I3-1)
+          ! The term 'p*(I3-1)' gives rise to: '2p I3 AZU'
+          ! Retain I3 = J^2, since J ~ 1 + m/rho /= 1
+          !Constitutive model: W=C1*(J1-3)+C2*(J2-3)+C3*(J-1)^2+lambda.(J-1-m/rho)
+          !J1 and J2 are the modified invariants, adjusted for volume change (J1=I1*J^(-2/3), J2=I2*J^(-4/3))
+          !Strictly speaking this law isn't for an incompressible material, but the fourth equation in the elasticity
+          !is used to satisfy a subtly different constraint, which is to require the solid portion of the poroelastic
+          !material retains its volume. (This law is applied on the whole pororous body).
+
+          PIOLA_TENSOR=0.0_DP
+          TEMP=0.0_DP
+
+          C(1)=MATERIALS_INTERPOLATED_POINT%VALUES(1,1)
+          C(2)=MATERIALS_INTERPOLATED_POINT%VALUES(2,1)
+          C(3)=MATERIALS_INTERPOLATED_POINT%VALUES(3,1)
+
+          !J1 term: del(J1)/del(C)=J^(-2/3)*I-2/3*I_1*J^(-2/3)*C^-1
+          TEMPTERM=Jznu**(-2.0_DP/3.0_DP)
+          TEMP(1,1)=TEMPTERM
+          TEMP(2,2)=TEMPTERM
+          TEMP(3,3)=TEMPTERM
+          I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
+          PIOLA_TENSOR=C(1)* (TEMP-1.0_DP/3.0_DP*I1*TEMPTERM*AZU)
+
+          !J2 term: del(J2)/del(C)=J^(-4/3)*del(I2)/del(C) -4/3*I_2*J^(-4/3)*C^-1
+          TEMP=MATMUL(AZL,AZL)  ! C^2
+          I2=0.5_DP*(I1**2.0_DP-(TEMP(1,1)+TEMP(2,2)+TEMP(3,3)))
+          TEMPTERM=Jznu**(-4.0_DP/3.0_DP)
+          !TEMP is now del(I2)/del(C)
+          TEMP(1,1)=AZL(2,2)+AZL(3,3)
+          !TEMP(1,2)=-2.0_DP*AZL(1,2)
+          TEMP(1,2)=-1.0_DP*AZL(1,2)
+          !TEMP(1,3)=-2.0_DP*AZL(1,3)
+          TEMP(1,3)=-1.0_DP*AZL(1,3)
+          TEMP(2,1)=TEMP(1,2)
+          TEMP(2,2)=AZL(1,1)+AZL(3,3)
+          !TEMP(2,3)=-2.0_DP*AZL(2,3)
+          TEMP(2,3)=-1.0_DP*AZL(2,3)
+          TEMP(3,1)=TEMP(1,3)
+          TEMP(3,2)=TEMP(2,3)
+          TEMP(3,3)=AZL(1,1)+AZL(2,2)
+          PIOLA_TENSOR=PIOLA_TENSOR+C(2)* (TEMPTERM*TEMP-2.0_DP/3.0_DP*I2*TEMPTERM*AZU)
+
+          !J (det(F)) term: (2.C3.(J-1)+lambda)*J.C^-1
+          PIOLA_TENSOR=PIOLA_TENSOR+(2.0_DP*C(3)*(Jznu-1.0_DP)+P)*Jznu*AZU
+
+          !Don't forget, it's wrt C so there is a factor of 2 - but not for the pressure !!??
+          PIOLA_TENSOR=2.0_DP*PIOLA_TENSOR
+
+
+          DARCY_MASS_INCREASE_ENTRY = 4 !fourth entry
+
+        END SELECT
+
+          !DARCY_MASS_INCREASE = DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(DARCY_MASS_INCREASE_ENTRY,NO_PART_DERIV)
+          !
+          !CALL EVALUATE_CHAPELLE_PIOLA_TENSOR_ADDITION(AZL,AZU,DARCY_MASS_INCREASE,PIOLA_TENSOR_ADDITION,ERR,ERROR,*999)
+          !
+          !IF(DIAGNOSTICS1) THEN
+          ! CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
+          !  & 3,3,PIOLA_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    PIOLA_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
+          !  & '(17X,3(X,E13.6))',ERR,ERROR,*999)
+          ! CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
+          !  & 3,3,PIOLA_TENSOR_ADDITION, &
+          !  & WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    PIOLA_TENSOR_ADDITION','(",I1,",:)',' :",3(X,E13.6))', &
+          !  & '(17X,3(X,E13.6))',ERR,ERROR,*999)
+          !ENDIF
+          !
+          !PIOLA_TENSOR = PIOLA_TENSOR + PIOLA_TENSOR_ADDITION
+      ENDIF
+
+    CASE(EQUATIONS_SET_ORTHOTROPIC_MATERIAL_COSTA_SUBTYPE,EQUATIONS_SET_ACTIVECONTRACTION_SUBTYPE) !added by Robert 2010-01-23
+      !Form of constitutive model is:
+      ! W=a/2 (e^Q - 1)
+      ! where Q=[b_ff 2b_fs 2b_fn b_ss 2b_sn b_nn]'* [E_ff E_fs E_fn E_ss E_sn E_nn].^2;
+      ! f,s,n denotes the fibre sheet and sheet-normal direction
+      a = MATERIALS_INTERPOLATED_POINT%VALUES(1,1)
+      B(1,1) = MATERIALS_INTERPOLATED_POINT%VALUES(1+1,1)
+      B(1,2) = MATERIALS_INTERPOLATED_POINT%VALUES(1+2,1)
+      B(1,3) = MATERIALS_INTERPOLATED_POINT%VALUES(1+3,1)
+      B(2,1) = B(1,2);
+      B(2,2) = MATERIALS_INTERPOLATED_POINT%VALUES(1+4,1)
+      B(2,3) = MATERIALS_INTERPOLATED_POINT%VALUES(1+5,1)
+      B(3,1) = B(1,3);
+      B(3,2) = B(2,3);
+      B(3,3) = MATERIALS_INTERPOLATED_POINT%VALUES(1+6,1)
+      Q = 0.0_DP;
+      DO i=1,3,1
+       DO j=1,3,1
+         IF (i==j) THEN
+              E(i,j) = 0.5_DP * (AZL(i,j)-1);
+         ELSE
+              E(i,j) = 0.5_DP * AZL(i,j);
+         ENDIF
+         Q = Q + B(i,j) * E(i,j) * E(i,j)
+       ENDDO
+      ENDDO
+      Q = exp(Q);
+      DO i=1,3,1
+       DO j=1,3,1
+         PIOLA_TENSOR(i,j)=a*B(i,j)*E(i,j)*Q + p*AZU(i,j);
+       ENDDO
+      ENDDO
+
+      IF(EQUATIONS_SET_SUBTYPE == EQUATIONS_SET_ACTIVECONTRACTION_SUBTYPE) THEN
+        CALL FINITE_ELASTICITY_PIOLA_ADD_ACTIVE_CONTRACTION(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
+             & EQUATIONS_SET%EQUATIONS%INTERPOLATION%MATERIALS_FIELD, PIOLA_TENSOR(1,1),E(1,1),         &
+             & ELEMENT_NUMBER,GAUSS_POINT_NUMBER,ERR,ERROR,*999)
+      ENDIF
+
+      CALL MATRIX_PRODUCT(DZDNU,PIOLA_TENSOR,TEMP,ERR,ERROR,*999)
+      CALL MATRIX_PRODUCT(TEMP,DZDNUT,CAUCHY_TENSOR,ERR,ERROR,*999)
+
+      CAUCHY_TENSOR=CAUCHY_TENSOR/Jznu
+      IF(DIAGNOSTICS1) THEN
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  ELEMENT_NUMBER = ",ELEMENT_NUMBER,ERR,ERROR,*999)
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  gauss_idx = ",GAUSS_POINT_NUMBER,ERR,ERROR,*999)
+        CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
+          & 3,3,PIOLA_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    PIOLA_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
+          & '(17X,3(X,E13.6))',ERR,ERROR,*999)
+        CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
+          & 3,3,CAUCHY_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    CAUCHY_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
+          & '(17X,3(X,E13.6))',ERR,ERROR,*999)
+      ENDIF
+      NULLIFY(C)
+    CASE(EQUATIONS_SET_STVENANT_KIRCHOFF_ACTIVECONTRACTION_SUBTYPE)
+    ! For of constitutive model is:
+    ! W = 0.5lambda*tr(E)^2 + mu*tr(E^2)
+    ! S = dW/dE = lambda*tr(E)Identity + 2muE
+      PIOLA_TENSOR(1,3)=(2.0_DP*C(2)*E(1,3))+(2.0_DP*P*AZU(1,3))
+      PIOLA_TENSOR(2,3)=(2.0_DP*C(2)*E(2,3))+(2.0_DP*P*AZU(2,3))
+      PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
+      PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
+      PIOLA_TENSOR(3,3)=C(1)*(E(1,1)+E(2,2)+E(3,3))+(2.0_DP*E(3,3)*C(2)+(2.0_DP*P*AZU(3,3)))
+
+      PIOLA_TENSOR(1,1)=C(1)*(E(1,1)+E(2,2)+E(3,3))+(2.0_DP*E(1,1)*C(2)+(2.0_DP*P*AZU(1,1)))
+      PIOLA_TENSOR(1,2)=(2.0_DP*C(2)*E(1,2))+(2.0_DP*P*AZU(1,2))
+      PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
+      PIOLA_TENSOR(2,2)=C(1)*(E(1,1)+E(2,2)+E(3,3))+(2.0_DP*E(2,2)*C(2)+(2.0_DP*P*AZU(2,2)))
+
+      CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
+        &  FIELD_U_VARIABLE_TYPE,&
+        &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,1,ACTIVE_STRESS_11,ERR,ERROR,*999) ! get the independent field stress value
+
+      CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
+        &  FIELD_U_VARIABLE_TYPE,&
+        &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,2,ACTIVE_STRESS_22,ERR,ERROR,*999) ! get the independent field stress value
+
+      CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
+        &  FIELD_U_VARIABLE_TYPE,&
+        &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,3,ACTIVE_STRESS_33,ERR,ERROR,*999) ! get the independent field stress value
+
+      PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+ACTIVE_STRESS_11
+      PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+ACTIVE_STRESS_22
+      PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+ACTIVE_STRESS_33
+
+    CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_STATIC_INRIA_SUBTYPE)
+      !C(1)=Mooney Rivlin parameter
+      !C(2)=Mooney Rivlin parameter
+      !C(3)=K
+      !C(4)=M, Biot modulus
+      !C(5)=b, skeleton parameter
+      !C(6)=p0, reference pressure
+
+      P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV) !Fluid pressure
+      CALL MATRIX_TRANSPOSE(AZL,AZLT,ERR,ERROR,*999)
+      I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
+      TEMP=MATMUL(AZL,AZL)
+      I2=0.5_DP*(I1**2.0_DP-TEMP(1,1)-TEMP(2,2)-TEMP(3,3))
+
+      CALL EVALUATE_CHAPELLE_FUNCTION(Jznu,ffact,dfdJfact,ERR,ERROR,*999)
+
+      PIOLA_TENSOR=2.0_DP*C(1)*Jznu**(-2.0_DP/3.0_DP)*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU)
+      PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*C(2)*Jznu**(-4.0_DP/3.0_DP)*(I1*IDENTITY-AZLT-(2.0_DP/3.0_DP)*I2*AZU)
+      PIOLA_TENSOR=PIOLA_TENSOR+(C(3)-C(4)*C(5)**2)*(Jznu-1.0_DP)*AZU
+      PIOLA_TENSOR=PIOLA_TENSOR-C(5)*(P-C(6))*Jznu*AZU
+      PIOLA_TENSOR=PIOLA_TENSOR+0.5_DP*((P-C(6))**2/C(4))*(dfdJfact/(ffact**2))*Jznu*AZU
+
+    CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_HOLMES_MOW_SUBTYPE)
+      ! See Holmes MH, Mow VC. The nonlinear characteristics of soft gels and hydrated connective tissues in ultrafiltration.
+      ! Journal of Biomechanics. 1990;23(11):1145-1156. DOI: 10.1016/0021-9290(90)90007-P
+      ! The form of constitutive relation is:
+      ! sigma = sigma^s + sigma^f
+      ! sigma^f = -phi^f p I
+      ! sigma^s = -phi^s p I + rho_0^s sigma^s_E
+      ! sigma^s_E is the effective Cauchy stress obtained by differentiating
+      ! the free energy function to get the second Piola-Kirchoff stress tensor:
+      ! rho_0^s W^s = c0 exp(c1(I1 - 3) + c2(I2 - 3)) / (I_3^(c1 + 2c2))
+      ! Rather than add the "phi^s p I" term to the Cauchy stress, we add it here as "phi^s p J C^-1"
+      ! We also set rho_0^s = the solid density * initial solidity, and move the solidity
+      ! inside the strain energy density function
+      !
+      ! c0 = C(1)
+      ! c1 = C(2)
+      ! c2 = C(3)
+      ! phi^s_0 = C(4)
+
+      CALL MATRIX_TRANSPOSE(AZL,AZLT,ERR,ERROR,*999)
+      CALL MATRIX_TRANSPOSE(AZU,AZUT,ERR,ERROR,*999)
+      I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
+      TEMP=MATMUL(AZL,AZL)
+      I2=0.5_DP*(I1**2.0_DP-TEMP(1,1)-TEMP(2,2)-TEMP(3,3))
+      !I3 already defined
+
+      TEMPTERM=2.0_DP*C(4)*C(1)*EXP(C(2)*(I1 - 3.0_DP) + C(3)*(I2 - 3.0_DP)) / (I3**(C(2)+2.0_DP*C(3)))
+      PIOLA_TENSOR=C(2)*TEMPTERM*IDENTITY + C(3)*TEMPTERM*(I1*IDENTITY-AZLT) - (C(2)+2.0_DP*C(3))*TEMPTERM*AZUT
+      PIOLA_TENSOR=PIOLA_TENSOR - DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
+
+    CASE DEFAULT
+      CALL FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE(EQUATIONS_SET_SUBTYPE,C,MATERIALS_INTERPOLATED_POINT,&
+        & E,AZL,AZU,Jznu,P,PIOLA_TENSOR,ERR, ERROR, *999)
+    END SELECT
+
+    CALL MATRIX_PRODUCT(DZDNU,PIOLA_TENSOR,TEMP,ERR,ERROR,*999)
+    CALL MATRIX_PRODUCT(TEMP,DZDNUT,CAUCHY_TENSOR,ERR,ERROR,*999)
+
+    CAUCHY_TENSOR=CAUCHY_TENSOR/Jznu
+    IF(DIAGNOSTICS1) THEN
+      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  ELEMENT_NUMBER = ",ELEMENT_NUMBER,ERR,ERROR,*999)
+      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  gauss_idx = ",GAUSS_POINT_NUMBER,ERR,ERROR,*999)
+      CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
+        & 3,3,PIOLA_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    PIOLA_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
+        & '(17X,3(X,E13.6))',ERR,ERROR,*999)
+      CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
+        & 3,3,CAUCHY_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    CAUCHY_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
+        & '(17X,3(X,E13.6))',ERR,ERROR,*999)
+    ENDIF
+    NULLIFY(C)
+
+    !CALL EXITS("FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR")
+    RETURN
+999 CALL ERRORS("FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR",ERR,ERROR)
+    CALL EXITS("FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR")
+    RETURN 1
+  END SUBROUTINE FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR
+
+
+
+  !
+  !================================================================================================================================
+  !
+  ! Calculate the 2PK and Cauchy stress from the input strain value.
+  SUBROUTINE FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE(EQUATIONS_SET_SUBTYPE,C,MATERIALS_INTERPOLATED_POINT,&
+    & E,AZL,AZU,Jznu,P,PIOLA_TENSOR,ERR, ERROR, *)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: EQUATIONS_SET_SUBTYPE !<The equation subtype
+    REAL(DP), DIMENSION (:), POINTER :: C  !Parameters for constitutive laws
+    TYPE(FIELD_INTERPOLATED_POINT_TYPE), POINTER :: MATERIALS_INTERPOLATED_POINT
+    REAL(DP), INTENT(IN) :: P            !Hydrostatic pressure
+    REAL(DP), INTENT(IN) :: E(3,3), AZL(3,3),AZU(3,3)  ! Green and Cauchy strains, and the inverse of Cauchy strain
+    REAL(DP), INTENT(IN) :: Jznu !Determinant of deformation gradient tensor (AZL)
+    REAL(DP), INTENT(OUT) :: PIOLA_TENSOR(:,:)
+    INTEGER(INTG), INTENT(OUT) :: ERR !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
+
+    !Local Variables
+    INTEGER(INTG) :: i,j,PRESSURE_COMPONENT,dof_idx
+    REAL(DP) :: DZDNUT(3,3),IDENTITY(3,3),AZLT(3,3),AZUT(3,3), I1, I2, I3
+    REAL(DP) :: AZL_SQUARED(3,3)
+    REAL(DP) :: TEMP(3,3),TEMPTERM  !Temporary variables
+    TYPE(VARYING_STRING) :: LOCAL_ERROR
+    REAL(DP) :: a, B(3,3), Q !Parameters for orthotropic laws
+    REAL(DP) :: ffact,dfdJfact !coupled elasticity Darcy
+    INTEGER(INTG) :: DARCY_MASS_INCREASE_ENTRY !position of mass-increase entry in dependent-variable vector
+    REAL(DP) :: VALUE,TITIN_VALUE,VAL1,VAL2
+    REAL(DP) :: WV_PRIME
+
+
+    SELECT CASE(EQUATIONS_SET_SUBTYPE)
+    CASE(EQUATIONS_SET_NEARLY_INCOMPRESSIBLE_MOONEY_RIVLIN_SUBTYPE)
+    !Form of constitutive model is:
+    ! W_hat=c1*(I1_hat-3)+c2*(I2_hat-3)+p*J*C^(-1) + W^v(J)
+      ! take W^v(J) = 1/2 * kappa * (J-1)^2
+      WV_PRIME = C(3)*(Jznu - 1.0_DP)
+      !compute the invariants, I3 a few lines up
+      I1 = AZL(1,1) + AZL(2,2) + AZL(3,3)
+      CALL MATRIX_PRODUCT(AZL,AZL,AZL_SQUARED,ERR,ERROR,*999)
+      I2 = 0.5_DP * (I1**2 - AZL_SQUARED(1,1) - AZL_SQUARED(2,2) - AZL_SQUARED(3,3))
+
+      PIOLA_TENSOR=2.0_DP*Jznu**(-2.0_DP/3.0_DP)*((C(1)+C(2)*I1)*IDENTITY-C(2)*AZL &
+        & -(C(1)*I1+2.0_DP*C(2)*I2-1.5_DP*WV_PRIME*Jznu**(5.0_DP/3.0_DP))/3.0_DP*AZU)
+
+    CASE(EQUATIONS_SET_INCOMPRESSIBLE_MOONEY_RIVLIN_SUBTYPE)
+    !Form of constitutive model is:
+    ! W_hat=c1*(I1_hat-3)+c2*(I2_hat-3)+p*J*C^(-1)
+
+      !compute the invariants, I3 a few lines up
+      I1 = AZL(1,1) + AZL(2,2) + AZL(3,3)
+      CALL MATRIX_PRODUCT(AZL,AZL,AZL_SQUARED,ERR,ERROR,*999)
+      I2 = 0.5_DP * (I1**2 - AZL_SQUARED(1,1) - AZL_SQUARED(2,2) - AZL_SQUARED(3,3))
+
+      !compute 2PK
+      !PIOLA_TENSOR(1,1) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (C(1) + C(2) * I1 - C(2) * AZL(1,1) &
+      !  & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(1,1))
+      !PIOLA_TENSOR(1,2) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (-C(2) * AZL(1,2) &
+      !  & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(1,2))
+      !PIOLA_TENSOR(1,3) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (-C(2) * AZL(1,3) &
+      !  & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(1,3))
+      !PIOLA_TENSOR(2,1) = PIOLA_TENSOR(1,2)
+      !PIOLA_TENSOR(2,2) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (C(1) + C(2) * I1 - C(2) * AZL(2,2) &
+      !  & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(2,2))
+      !PIOLA_TENSOR(2,3) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (-C(2) * AZL(2,3) &
+      !  & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(2,3))
+      !PIOLA_TENSOR(3,1) = PIOLA_TENSOR(1,3)
+      !PIOLA_TENSOR(3,2) = PIOLA_TENSOR(2,3)
+      !PIOLA_TENSOR(3,3) = 2.0_DP * Jznu**(-2.0_DP/3.0_DP) * (C(1) + C(2) * I1 - C(2) * AZL(3,3) &
+      !  & - (C(1) * I1 + 2.0_DP * C(2) * I2 - 1.5_DP * P * Jznu**(5.0_DP/3.0_DP)) / 3.0_DP * AZU(3,3))
+      !????
+      PIOLA_TENSOR=2.0_DP*Jznu**(-2.0_DP/3.0_DP)*((C(1)+C(2)*I1)*IDENTITY-C(2)*AZL &
+        & -(C(1)*I1+2.0_DP*C(2)*I2-1.5_DP*P*Jznu**(5.0_DP/3.0_DP))/3.0_DP*AZU)
     CASE(EQUATIONS_SET_TRANS_ISOTROPIC_ACTIVE_TRANSITION_SUBTYPE)
       !Equations set for transversely isotropic (fibre-reinforced), active contractible bodies consitisting of two materials
       ! The local portion between them is defined by the parameter trans
@@ -2864,95 +3151,12 @@ CONTAINS
           VALUE=(-25.0_DP/4.0_DP*AZL(1,1)/1.4/1.4 + 25.0_DP/2.0_DP*SQRT(AZL(1,1))/1.4_DP - 5.25_DP)
           VALUE=VALUE*(1/SQRT(AZL(1,1)))*300000000*C(9)*C(10)  ! P_max here as a constant
         ENDIF
-
     CASE(EQUATIONS_SET_ISOTROPIC_EXPONENTIAL_SUBTYPE)
       !Form of constitutive model is:
       ! W=c1/2 (e^(c2*(I1-3)) - 1)
       ! S = 2*dW/dC + 2pC^-1
       PIOLA_TENSOR=C(1)*C(2)*EXP(C(2)*(AZL(1,1)+AZL(2,2)+AZL(3,3)-3.0_DP))*IDENTITY+2.0_DP*P*AZU
-    CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_STATIC_INRIA_SUBTYPE)
-      !C(1)=Mooney Rivlin parameter
-      !C(2)=Mooney Rivlin parameter
-      !C(3)=K
-      !C(4)=M, Biot modulus
-      !C(5)=b, skeleton parameter
-      !C(6)=p0, reference pressure
-
-      P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV) !Fluid pressure
-      CALL MATRIX_TRANSPOSE(AZL,AZLT,ERR,ERROR,*999)
-      I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
-      TEMP=MATMUL(AZL,AZL)
-      I2=0.5_DP*(I1**2.0_DP-TEMP(1,1)-TEMP(2,2)-TEMP(3,3))
-
-      CALL EVALUATE_CHAPELLE_FUNCTION(Jznu,ffact,dfdJfact,ERR,ERROR,*999)
-
-      PIOLA_TENSOR=2.0_DP*C(1)*Jznu**(-2.0_DP/3.0_DP)*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU)
-      PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*C(2)*Jznu**(-4.0_DP/3.0_DP)*(I1*IDENTITY-AZLT-(2.0_DP/3.0_DP)*I2*AZU)
-      PIOLA_TENSOR=PIOLA_TENSOR+(C(3)-C(4)*C(5)**2)*(Jznu-1.0_DP)*AZU
-      PIOLA_TENSOR=PIOLA_TENSOR-C(5)*(P-C(6))*Jznu*AZU
-      PIOLA_TENSOR=PIOLA_TENSOR+0.5_DP*((P-C(6))**2/C(4))*(dfdJfact/(ffact**2))*Jznu*AZU
-    CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_HOLMES_MOW_SUBTYPE)
-      ! See Holmes MH, Mow VC. The nonlinear characteristics of soft gels and hydrated connective tissues in ultrafiltration.
-      ! Journal of Biomechanics. 1990;23(11):1145-1156. DOI: 10.1016/0021-9290(90)90007-P
-      ! The form of constitutive relation is:
-      ! sigma = sigma^s + sigma^f
-      ! sigma^f = -phi^f p I
-      ! sigma^s = -phi^s p I + rho_0^s sigma^s_E
-      ! sigma^s_E is the effective Cauchy stress obtained by differentiating
-      ! the free energy function to get the second Piola-Kirchoff stress tensor:
-      ! rho_0^s W^s = c0 exp(c1(I1 - 3) + c2(I2 - 3)) / (I_3^(c1 + 2c2))
-      ! Rather than add the "phi^s p I" term to the Cauchy stress, we add it here as "phi^s p J C^-1"
-      ! We also set rho_0^s = the solid density * initial solidity, and move the solidity
-      ! inside the strain energy density function
-      !
-      ! c0 = C(1)
-      ! c1 = C(2)
-      ! c2 = C(3)
-      ! phi^s_0 = C(4)
-
-      CALL MATRIX_TRANSPOSE(AZL,AZLT,ERR,ERROR,*999)
-      CALL MATRIX_TRANSPOSE(AZU,AZUT,ERR,ERROR,*999)
-      I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
-      TEMP=MATMUL(AZL,AZL)
-      I2=0.5_DP*(I1**2.0_DP-TEMP(1,1)-TEMP(2,2)-TEMP(3,3))
-      !I3 already defined
-
-      TEMPTERM=2.0_DP*C(4)*C(1)*EXP(C(2)*(I1 - 3.0_DP) + C(3)*(I2 - 3.0_DP)) / (I3**(C(2)+2.0_DP*C(3)))
-      PIOLA_TENSOR=C(2)*TEMPTERM*IDENTITY + C(3)*TEMPTERM*(I1*IDENTITY-AZLT) - (C(2)+2.0_DP*C(3))*TEMPTERM*AZUT
-      PIOLA_TENSOR=PIOLA_TENSOR - DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
-    
-    CASE(EQUATIONS_SET_STVENANT_KIRCHOFF_ACTIVECONTRACTION_SUBTYPE)
-    ! For of constitutive model is:
-    ! W = 0.5lambda*tr(E)^2 + mu*tr(E^2)
-    ! S = dW/dE = lambda*tr(E)Identity + 2muE
-      PIOLA_TENSOR(1,3)=(2.0_DP*C(2)*E(1,3))+(2.0_DP*P*AZU(1,3))
-      PIOLA_TENSOR(2,3)=(2.0_DP*C(2)*E(2,3))+(2.0_DP*P*AZU(2,3))
-      PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
-      PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
-      PIOLA_TENSOR(3,3)=C(1)*(E(1,1)+E(2,2)+E(3,3))+(2.0_DP*E(3,3)*C(2)+(2.0_DP*P*AZU(3,3)))
-      
-      PIOLA_TENSOR(1,1)=C(1)*(E(1,1)+E(2,2)+E(3,3))+(2.0_DP*E(1,1)*C(2)+(2.0_DP*P*AZU(1,1)))
-      PIOLA_TENSOR(1,2)=(2.0_DP*C(2)*E(1,2))+(2.0_DP*P*AZU(1,2))
-      PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
-      PIOLA_TENSOR(2,2)=C(1)*(E(1,1)+E(2,2)+E(3,3))+(2.0_DP*E(2,2)*C(2)+(2.0_DP*P*AZU(2,2)))
-
-      CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
-        &  FIELD_U_VARIABLE_TYPE,&
-        &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,1,ACTIVE_STRESS_11,ERR,ERROR,*999) ! get the independent field stress value
-
-      CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
-        &  FIELD_U_VARIABLE_TYPE,&
-        &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,2,ACTIVE_STRESS_22,ERR,ERROR,*999) ! get the independent field stress value
-
-      CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
-        &  FIELD_U_VARIABLE_TYPE,&
-        &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,3,ACTIVE_STRESS_33,ERR,ERROR,*999) ! get the independent field stress value
-
-      PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+ACTIVE_STRESS_11
-      PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+ACTIVE_STRESS_22
-      PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+ACTIVE_STRESS_33
-
-    CASE(EQUATIONS_SET_TRANSVERSE_ISOTROPIC_EXPONENTIAL_SUBTYPE) 
+    CASE(EQUATIONS_SET_TRANSVERSE_ISOTROPIC_EXPONENTIAL_SUBTYPE)
       !Form of constitutive model is:
       ! W=c1/2 (e^Q - 1)
       ! where Q=2c2(E11+E22+E33)+c3(E11^2)+c4(E22^2+E33^2+E23^2+E32^2)+c5(E12^2+E21^2+E31^2+E13^2)
@@ -3001,180 +3205,6 @@ CONTAINS
       PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
       PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
       PIOLA_TENSOR=PIOLA_TENSOR*2.0_DP
-    CASE(EQUATIONS_SET_ORTHOTROPIC_MATERIAL_COSTA_SUBTYPE,EQUATIONS_SET_ACTIVECONTRACTION_SUBTYPE) !added by Robert 2010-01-23
-      !Form of constitutive model is:
-      ! W=a/2 (e^Q - 1)
-      ! where Q=[b_ff 2b_fs 2b_fn b_ss 2b_sn b_nn]'* [E_ff E_fs E_fn E_ss E_sn E_nn].^2;
-      ! f,s,n denotes the fibre sheet and sheet-normal direction
-      a = MATERIALS_INTERPOLATED_POINT%VALUES(1,1)
-      B(1,1) = MATERIALS_INTERPOLATED_POINT%VALUES(1+1,1)
-      B(1,2) = MATERIALS_INTERPOLATED_POINT%VALUES(1+2,1)
-      B(1,3) = MATERIALS_INTERPOLATED_POINT%VALUES(1+3,1)
-      B(2,1) = B(1,2);
-      B(2,2) = MATERIALS_INTERPOLATED_POINT%VALUES(1+4,1)
-      B(2,3) = MATERIALS_INTERPOLATED_POINT%VALUES(1+5,1)
-      B(3,1) = B(1,3);
-      B(3,2) = B(2,3);
-      B(3,3) = MATERIALS_INTERPOLATED_POINT%VALUES(1+6,1)
-      Q = 0.0_DP;
-      DO i=1,3,1
-       DO j=1,3,1
-         IF (i==j) THEN
-              E(i,j) = 0.5_DP * (AZL(i,j)-1);
-         ELSE 
-              E(i,j) = 0.5_DP * AZL(i,j);
-         ENDIF
-         Q = Q + B(i,j) * E(i,j) * E(i,j)
-       ENDDO
-      ENDDO
-      Q = exp(Q);
-      DO i=1,3,1
-       DO j=1,3,1
-         PIOLA_TENSOR(i,j)=a*B(i,j)*E(i,j)*Q + p*AZU(i,j);
-       ENDDO
-      ENDDO
-
-      IF(EQUATIONS_SET_SUBTYPE == EQUATIONS_SET_ACTIVECONTRACTION_SUBTYPE) THEN
-        CALL FINITE_ELASTICITY_PIOLA_ADD_ACTIVE_CONTRACTION(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, &
-             & EQUATIONS_SET%EQUATIONS%INTERPOLATION%MATERIALS_FIELD, PIOLA_TENSOR(1,1),E(1,1),         &
-             & ELEMENT_NUMBER,GAUSS_POINT_NUMBER,ERR,ERROR,*999)
-      ENDIF
-    CASE (EQUATIONS_SET_COMPRESSIBLE_FINITE_ELASTICITY_SUBTYPE,EQUATIONS_SET_ELASTICITY_DARCY_INRIA_MODEL_SUBTYPE, &
-      & EQUATIONS_SET_COMPRESSIBLE_ACTIVECONTRACTION_SUBTYPE, &
-      & EQUATIONS_SET_INCOMPRESSIBLE_ELASTICITY_DRIVEN_DARCY_SUBTYPE,EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE)
-      !Form of constitutive model is:
-      ! W=c1*(I1-3)+c2*(I2-3)+c3*(J-1)^2   (this is actually nearly incompressible)
-      C(1)=MATERIALS_INTERPOLATED_POINT%VALUES(1,1)
-      C(2)=MATERIALS_INTERPOLATED_POINT%VALUES(2,1)
-
-      PIOLA_TENSOR(1,1)=C(1)+C(2)*(AZL(2,2)+AZL(3,3))
-      PIOLA_TENSOR(1,2)=C(2)*(-AZL(2,1))
-      PIOLA_TENSOR(1,3)=C(2)*(-AZL(3,1))   
-      PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
-      PIOLA_TENSOR(2,2)=C(1)+C(2)*(AZL(3,3)+AZL(1,1))
-      PIOLA_TENSOR(2,3)=C(2)*(-AZL(3,2))     
-      PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
-      PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
-      PIOLA_TENSOR(3,3)=C(1)+C(2)*(AZL(1,1)+AZL(2,2))
-      PIOLA_TENSOR=PIOLA_TENSOR*2.0_DP
-
-      IF(DIAGNOSTICS1) THEN
-        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  C(1) = ",C(1),ERR,ERROR,*999)
-        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  C(2) = ",C(2),ERR,ERROR,*999)
-        CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
-          & 3,3,AZL,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    AZL','(",I1,",:)',' :",3(X,E13.6))', &
-          & '(17X,3(X,E13.6))',ERR,ERROR,*999)
-      ENDIF
-
-      IF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_COMPRESSIBLE_ACTIVECONTRACTION_SUBTYPE) THEN
-
-        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
-          &  FIELD_U_VARIABLE_TYPE,&
-          &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,1,ACTIVE_STRESS_11,ERR,ERROR,*999) ! get the independent field stress value
-
-        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
-          &  FIELD_U_VARIABLE_TYPE,&
-          &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,2,ACTIVE_STRESS_22,ERR,ERROR,*999) ! get the independent field stress value
-
-        CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(EQUATIONS_SET%INDEPENDENT%INDEPENDENT_FIELD, & 
-          &  FIELD_U_VARIABLE_TYPE,&
-          &  FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,3,ACTIVE_STRESS_33,ERR,ERROR,*999) ! get the independent field stress value
-
-        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+ACTIVE_STRESS_11
-        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+ACTIVE_STRESS_22
-        PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+ACTIVE_STRESS_33
-      ENDIF
-      IF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_COMPRESSIBLE_FINITE_ELASTICITY_SUBTYPE .OR. & 
-        & EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_COMPRESSIBLE_ACTIVECONTRACTION_SUBTYPE) THEN
-        C(3)=MATERIALS_INTERPOLATED_POINT%VALUES(3,1)
-        PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*C(3)*(I3-SQRT(I3))*AZU
-      ELSEIF(EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_ELASTICITY_DARCY_INRIA_MODEL_SUBTYPE.OR. &
-        & EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_INCOMPRESSIBLE_ELASTICITY_DRIVEN_DARCY_SUBTYPE .OR. &
-        & EQUATIONS_SET_SUBTYPE==EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE) THEN
-        SELECT CASE (EQUATIONS_SET_SUBTYPE)
-        CASE (EQUATIONS_SET_ELASTICITY_DARCY_INRIA_MODEL_SUBTYPE) !Nearly incompressible
-          C(3)=MATERIALS_INTERPOLATED_POINT%VALUES(3,1)
-          !Starting point for this models is above compressible form of 2nd PK tensor
-          !Adjust for the modified Ciarlet-Geymonat expression: Eq.(22) of the INRIA paper
-          ! Question is: What deviation is to be penalized : (J-1) or (J-1-m/rho) ??? Probably the latter !
-          ! However, m/rho is a given 'constant' and, upon differentiation, drops out.
-          ! But it is important to retain I3 = J^2, since J ~ 1 + m/rho /= 1
-          PIOLA_TENSOR=PIOLA_TENSOR+C(3)*(SQRT(I3)-1.0_DP)*AZU
-          DARCY_MASS_INCREASE_ENTRY = 5 !fifth entry
-        CASE (EQUATIONS_SET_INCOMPRESSIBLE_ELASTICITY_DRIVEN_DARCY_SUBTYPE, &
-           &  EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE) !Incompressible
-          !Constitutive model: W=c1*(I1-3)+c2*(I2-3)+p*(I3-1) 
-          ! The term 'p*(I3-1)' gives rise to: '2p I3 AZU'
-          ! Retain I3 = J^2, since J ~ 1 + m/rho /= 1 
-!         CASE (EQUATIONS_SET_INCOMPRESSIBLE_ELASTICITY_DRIVEN_MR_SUBTYPE)
-          !Constitutive model: W=C1*(J1-3)+C2*(J2-3)+C3*(J-1)^2+lambda.(J-1-m/rho)
-          !J1 and J2 are the modified invariants, adjusted for volume change (J1=I1*J^(-2/3), J2=I2*J^(-4/3))
-          !Strictly speaking this law isn't for an incompressible material, but the fourth equation in the elasticity
-          !is used to satisfy a subtly different constraint, which is to require the solid portion of the poroelastic
-          !material retains its volume. (This law is applied on the whole pororous body).
-          
-          PIOLA_TENSOR=0.0_DP
-          TEMP=0.0_DP
-          
-          C(1)=MATERIALS_INTERPOLATED_POINT%VALUES(1,1)
-          C(2)=MATERIALS_INTERPOLATED_POINT%VALUES(2,1)
-          C(3)=MATERIALS_INTERPOLATED_POINT%VALUES(3,1)
-
-          !J1 term: del(J1)/del(C)=J^(-2/3)*I-2/3*I_1*J^(-2/3)*C^-1
-          TEMPTERM=Jznu**(-2.0_DP/3.0_DP)
-          TEMP(1,1)=TEMPTERM
-          TEMP(2,2)=TEMPTERM
-          TEMP(3,3)=TEMPTERM
-          I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
-          PIOLA_TENSOR=C(1)* (TEMP-1.0_DP/3.0_DP*I1*TEMPTERM*AZU)
-
-          !J2 term: del(J2)/del(C)=J^(-4/3)*del(I2)/del(C) -4/3*I_2*J^(-4/3)*C^-1
-          TEMP=MATMUL(AZL,AZL)  ! C^2
-          I2=0.5_DP*(I1**2.0_DP-(TEMP(1,1)+TEMP(2,2)+TEMP(3,3)))
-          TEMPTERM=Jznu**(-4.0_DP/3.0_DP)
-          !TEMP is now del(I2)/del(C)
-          TEMP(1,1)=AZL(2,2)+AZL(3,3)
-!           TEMP(1,2)=-2.0_DP*AZL(1,2)
-          TEMP(1,2)=-1.0_DP*AZL(1,2)
-!           TEMP(1,3)=-2.0_DP*AZL(1,3)
-          TEMP(1,3)=-1.0_DP*AZL(1,3)
-          TEMP(2,1)=TEMP(1,2)
-          TEMP(2,2)=AZL(1,1)+AZL(3,3)
-!           TEMP(2,3)=-2.0_DP*AZL(2,3)
-          TEMP(2,3)=-1.0_DP*AZL(2,3)
-          TEMP(3,1)=TEMP(1,3)
-          TEMP(3,2)=TEMP(2,3)
-          TEMP(3,3)=AZL(1,1)+AZL(2,2)
-          PIOLA_TENSOR=PIOLA_TENSOR+C(2)* (TEMPTERM*TEMP-2.0_DP/3.0_DP*I2*TEMPTERM*AZU)
-          
-          !J (det(F)) term: (2.C3.(J-1)+lambda)*J.C^-1
-          PIOLA_TENSOR=PIOLA_TENSOR+(2.0_DP*C(3)*(Jznu-1.0_DP)+P)*Jznu*AZU
-
-          !Don't forget, it's wrt C so there is a factor of 2 - but not for the pressure !!??
-          PIOLA_TENSOR=2.0_DP*PIOLA_TENSOR
-
-
-          DARCY_MASS_INCREASE_ENTRY = 4 !fourth entry
-
-        END SELECT
-
-!         DARCY_MASS_INCREASE = DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(DARCY_MASS_INCREASE_ENTRY,NO_PART_DERIV)
-! 
-!         CALL EVALUATE_CHAPELLE_PIOLA_TENSOR_ADDITION(AZL,AZU,DARCY_MASS_INCREASE,PIOLA_TENSOR_ADDITION,ERR,ERROR,*999)
-! 
-!         IF(DIAGNOSTICS1) THEN
-!           CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
-!             & 3,3,PIOLA_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    PIOLA_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
-!             & '(17X,3(X,E13.6))',ERR,ERROR,*999)
-!           CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
-!             & 3,3,PIOLA_TENSOR_ADDITION, &
-!             & WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    PIOLA_TENSOR_ADDITION','(",I1,",:)',' :",3(X,E13.6))', &
-!             & '(17X,3(X,E13.6))',ERR,ERROR,*999)
-!         ENDIF
-! 
-!         PIOLA_TENSOR = PIOLA_TENSOR + PIOLA_TENSOR_ADDITION
-      ENDIF
-
     CASE (EQUATIONS_SET_ORTHOTROPIC_MATERIAL_HOLZAPFEL_OGDEN_SUBTYPE) ! added by Thomas 2010-04-13
       !Form of the constitutive model is:
       ! W = a/(2*b)*exp[b*(I1-3)] + sum_(i=f,s)[H(I4i-1)*a_i/(2*b_i)*(exp[b_i*(I4i-1)^2]-1)] + a_fs/(2*b_fs)*(exp[b_fs*I8fs^2]-1)
@@ -3215,28 +3245,14 @@ CONTAINS
       CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
     END SELECT
 
-    CALL MATRIX_PRODUCT(DZDNU,PIOLA_TENSOR,TEMP,ERR,ERROR,*999)
-    CALL MATRIX_PRODUCT(TEMP,DZDNUT,CAUCHY_TENSOR,ERR,ERROR,*999)
-    
-    CAUCHY_TENSOR=CAUCHY_TENSOR/Jznu
-    IF(DIAGNOSTICS1) THEN
-      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  ELEMENT_NUMBER = ",ELEMENT_NUMBER,ERR,ERROR,*999)
-      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  gauss_idx = ",GAUSS_POINT_NUMBER,ERR,ERROR,*999)
-      CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
-        & 3,3,PIOLA_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    PIOLA_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
-        & '(17X,3(X,E13.6))',ERR,ERROR,*999)
-      CALL WRITE_STRING_MATRIX(DIAGNOSTIC_OUTPUT_TYPE,1,1,3,1,1,3, &
-        & 3,3,CAUCHY_TENSOR,WRITE_STRING_MATRIX_NAME_AND_INDICES,'("    CAUCHY_TENSOR','(",I1,",:)',' :",3(X,E13.6))', &
-        & '(17X,3(X,E13.6))',ERR,ERROR,*999)
-    ENDIF
-    NULLIFY(C)
-
-    !CALL EXITS("FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR")
+    !CALL EXITS("FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE")
     RETURN
-999 CALL ERRORS("FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR",ERR,ERROR)
-    CALL EXITS("FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR")
+999 CALL ERRORS("FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE",ERR,ERROR)
+    CALL EXITS("FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE")
     RETURN 1
-  END SUBROUTINE FINITE_ELASTICITY_GAUSS_CAUCHY_TENSOR
+  END SUBROUTINE FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE
+
+
 
   !
   !================================================================================================================================
