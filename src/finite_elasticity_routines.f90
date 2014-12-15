@@ -2011,7 +2011,7 @@ CONTAINS
     REAL(DP) :: I1,I2,I3
     REAL(DP) :: JXXi, Jznu
     REAL(DP), DIMENSION (:), POINTER :: C !Parameters for constitutive laws
-    REAL(DP) :: TEMPTERM  !Temporary variables
+    REAL(DP) :: TEMPTERM, Q  !Temporary variables
 
     CALL Enters("FiniteElasticity_StrainInterpolateXi",err,error,*999)
 
@@ -2160,7 +2160,7 @@ CONTAINS
         ! W=C1*exp*(Q) + p(J-1)
         ! Q=C2*E(1,1)^2 + C3*(E(2,2)^2+E(3,3)^2+2*E(2,3)*E(3,2)) + 2*C4*(E(1,2)*E(2,1)+E(1,3)*E(3,1))
         Q=C(2)*E(1,1)**2 + C(3)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2) + 2.0_DP*C(4)*(E(1,2)**2+E(1,3)**2)
-        TEMPTERM=C(1)*exp(Q) ! iso term
+        TEMPTERM=C(1)*EXP(Q) ! iso term
         PIOLA_TENSOR(1,1) = C(2) * E(1,1)
         PIOLA_TENSOR(2,2) = C(3) * E(2,2)
         PIOLA_TENSOR(3,3) = C(3) * E(3,3)
