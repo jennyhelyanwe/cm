@@ -3076,7 +3076,7 @@ CONTAINS
           END IF
           ! determine step size
           CALL DistributedVector_L2Norm(parameters,delta,err,error,*999)
-          delta=(1.0_DP+delta)*1E-7_DP
+          delta=(1.0_DP+delta)*1E-6_DP
           ! the actual finite differencing algorithm is about 4 lines but since the parameters are all
           ! distributed out, have to use proper field accessing routines..
           ! so let's just loop over component, node/el, derivative
@@ -6266,14 +6266,16 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location.
-  SUBROUTINE EquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi,values,stress2PK, err,error,*)
+  SUBROUTINE EquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*)
 
     !Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
+    TYPE(CELLML_TYPE), POINTER :: cellML !<The CellML environment object in which to create the map.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
-    REAL(DP), INTENT(OUT) :: stress2PK(6)
+    REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress values.
+    REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
 
@@ -6288,7 +6290,7 @@ CONTAINS
 
     SELECT CASE(equationsSet%class)
     CASE(EQUATIONS_SET_ELASTICITY_CLASS)
-      CALL Elasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,values,stress2PK,err,error,*999)
+      CALL Elasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*999)
     CASE(EQUATIONS_SET_FLUID_MECHANICS_CLASS)
       CALL FlagError("Not implemented.",err,error,*999)
     CASE(EQUATIONS_SET_ELECTROMAGNETICS_CLASS)

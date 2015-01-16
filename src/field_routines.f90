@@ -7850,6 +7850,7 @@ CONTAINS
                 CASE(FIELD_GAUSS_POINT_BASED_INTERPOLATION)
                   num_gauss_pts = INTERPOLATION_PARAMETERS%FIELD_VARIABLE%COMPONENTS(component_idx)%PARAM_TO_DOF_MAP% &
                     & GAUSS_POINT_PARAM2DOF_MAP%NUMBER_OF_GAUSS_POINT_PARAMETERS
+                  num_gauss_pts = num_gauss_pts/INTERPOLATION_PARAMETERS%FIELD_VARIABLE%NUMBER_OF_COMPONENTS
                   INTERPOLATION_PARAMETERS%NUMBER_OF_PARAMETERS(component_idx)=num_gauss_pts
                   DO gauss_idx=1,num_gauss_pts
                     dof_idx = INTERPOLATION_PARAMETERS%FIELD_VARIABLE%COMPONENTS(component_idx)%PARAM_TO_DOF_MAP% &

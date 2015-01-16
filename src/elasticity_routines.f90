@@ -458,12 +458,13 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location.
-  SUBROUTINE Elasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,values, stress2PK,stressCauchy,err,error,*)
+  SUBROUTINE Elasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*)
 
     !Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
+    TYPE(CELLML_TYPE), POINTER :: cellML !<A pointer to the CellML environment to integrate the equations for.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress tensor values.
     REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
@@ -480,7 +481,7 @@ CONTAINS
     CASE(EQUATIONS_SET_LINEAR_ELASTICITY_TYPE)
       CALL FlagError("Not implemented.",err,error,*999)
     CASE(EQUATIONS_SET_FINITE_ELASTICITY_TYPE)
-      CALL FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,values,stress2PK,stressCauchy,err,error,*999)
+      CALL FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*999)
     CASE DEFAULT
       CALL FlagError("Equations set type "//TRIM(NumberToVstring(equationsSet%type,"*",err,error))// &
         & " is not valid for an elasticity class equation.",err,error,*999)

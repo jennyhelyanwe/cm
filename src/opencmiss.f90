@@ -25661,13 +25661,14 @@ CONTAINS
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by a user number.
   SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,xi,&
-    &values,stress2PK,stressCauchy,err)
+    & cellML, values,stress2PK,stressCauchy,err)
 
     !Argument variables
     INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the equations set.
     INTEGER(INTG), INTENT(IN) :: equationsSetUserNumber !<The user number of the equations set to calculate the strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
+    TYPE(CMISSCellMLType), INTENT(IN) :: cellML !<The CellML enviroment.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
     REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
@@ -25687,7 +25688,7 @@ CONTAINS
       CALL EQUATIONS_SET_USER_NUMBER_FIND(equationsSetUserNumber,region,equationsSet,err,error,*999)
       IF(ASSOCIATED(equationsSet)) THEN
         CALL EquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi, &
-          & values,stress2PK,err,error,*999)
+          & cellML%cellml,values,stress2PK,stressCauchy,err,error,*999)
       ELSE
         localError="An equations set with a user number of "//TRIM(NumberToVstring(equationsSetUserNumber,"*", &
           & err,error))//" does not exist on region number "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//"."
@@ -25714,12 +25715,13 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by an object.
-  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,values,stress2PK,stressCauchy,err)
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err)
 
     !Argument variables
     TYPE(CMISSEquationsSetType), INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
+    TYPE(CMISSCellMLType), INTENT(IN) :: cellML !<The CellML enviroment.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress tensor values.
     REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
@@ -25728,7 +25730,7 @@ CONTAINS
     CALL Enters("CMISSEquationsSet_StrainInterpolateXiObj",err,error,*999)
 
     CALL EquationsSet_StrainInterpolateXi(equationsSet%equations_set,userElementNumber,xi, &
-      & values,stress2PK,err,error,*999)
+      & cellML%cellml,values,stress2PK,stressCauchy,err,error,*999)
 
     CALL Exits("CMISSEquationsSet_StrainInterpolateXiObj")
     RETURN
