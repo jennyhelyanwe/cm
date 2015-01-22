@@ -47,6 +47,7 @@ MODULE FINITE_ELASTICITY_ROUTINES
   USE BASE_ROUTINES
   USE BASIS_ROUTINES
   USE BOUNDARY_CONDITIONS_ROUTINES
+  USE CELLML_MODEL_DEFINITION
   USE CMISS_PETSC
   USE COMP_ENVIRONMENT
   USE CONSTANTS
@@ -602,6 +603,43 @@ CONTAINS
   !================================================================================================================================
   !
 
+  !>Evaluates the fibre reference vector
+  SUBROUTINE FiniteElasticity_FibreReferenceVectorEvaluate(dXRCdxi,DXRCXN,err,error,*)
+    !Argument variables
+    REAL(DP), INTENT(IN) :: dXRCdxi(:,:)
+    REAL(DP), INTENT(OUT) :: DXRCXN(:,:)
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+    !Local variables
+    REAL(DP) :: vectorF(3),vectorG(3),vectorH(3)
+    INTEGER(INTG) :: idx
+
+    CALL ENTERS("FiniteElasticity_FibreReferenceVectorEvaluate",err,error,*999)
+
+    ! Vector F is normalised undeformed xi1 base vector
+    vectorF=Normalise(dXRCdxi(:,1),err,error)
+    ! Vector H is the normalised cross product of xi1 and xi2 base vectors
+    CALL NormCrossProduct(dXRCdxi(:,1),dXRCdxi(:,2),vectorH,err,error,*999)
+    ! vector G is the normalised cross product of vector H and F
+    CALL NormCrossProduct(vectorH,vectorF,vectorG,err,error,*999)
+    DO idx=1,3
+      DXRCXN(:,1)=vectorF
+      DXRCXN(:,2)=vectorG
+      DXRCXN(:,3)=vectorH
+    ENDDO !idx
+
+    CALL EXITS("FiniteElasticity_FibreReferenceVectorEvaluate")
+    RETURN
+999 CALL ERRORS("FiniteElasticity_FibreReferenceVectorEvaluate",err,error)
+    CALL EXITS("FiniteElasticity_FibreReferenceVectorEvaluate")
+    RETURN
+
+  END SUBROUTINE FiniteElasticity_FibreReferenceVectorEvaluate
+
+  !
+  !================================================================================================================================
+  !
+
   !>Evaluates the residual and RHS vectors for a finite elasticity finite element equations set.
   SUBROUTINE FINITE_ELASTICITY_FINITE_ELEMENT_RESIDUAL_EVALUATE(EQUATIONS_SET,ELEMENT_NUMBER,ERR,ERROR,*)
 
@@ -655,6 +693,9 @@ CONTAINS
     REAL(DP) :: THICKNESS ! for elastic membrane
     REAL(DP) :: DARCY_MASS_INCREASE,DARCY_VOL_INCREASE,DARCY_RHO_0_F,DENSITY  !coupling with Darcy model
     REAL(DP) :: Mfact, bfact, p0fact
+    REAL(DP) :: TGZG
+    REAL(DP) :: AGE,DNUDZ(3,3),DZDXI(3,3),DXIDZ(3,3),Jzxi,DXRCXN(3,3),DXIXN(3,3),DFDXN(64,3)
+    INTEGER(INTG) :: component_idx3,xi_idx,derivative_idx
 
 
     CALL ENTERS("FINITE_ELASTICITY_FINITE_ELEMENT_RESIDUAL_EVALUATE",ERR,ERROR,*999)
@@ -867,8 +908,12 @@ CONTAINS
             ENDIF
 
             !Calculate dPhi/dZ at the gauss point, Phi is the basis function
-            CALL FINITE_ELASTICITY_GAUSS_DFDZ(DEPENDENT_INTERPOLATED_POINT,ELEMENT_NUMBER,gauss_idx,NUMBER_OF_DIMENSIONS, &
-              & NUMBER_OF_XI,DFDZ,ERR,ERROR,*999)
+            !CALL FINITE_ELASTICITY_GAUSS_DFDZ(DEPENDENT_INTERPOLATED_POINT,ELEMENT_NUMBER,gauss_idx,NUMBER_OF_DIMENSIONS, &
+              !& NUMBER_OF_XI,DFDZ,ERR,ERROR,*999)
+
+            !XY Calculate dPhi/dXM at the gauss point for Lagrangian implementation
+            CALL FINITE_ELASTICITY_GAUSS_DFDXN(GEOMETRIC_INTERPOLATED_POINT,ELEMENT_NUMBER,gauss_idx,NUMBER_OF_DIMENSIONS, &
+              & NUMBER_OF_XI,DFDXN,ERR,ERROR,*999)
 
             !For membrane theory in 3D space, the final equation is multiplied by thickness. Default to unit thickness if equation set subtype is not membrane
             THICKNESS = 1.0_DP
@@ -881,6 +926,12 @@ CONTAINS
 
             !Now add up the residual terms
             element_dof_idx=0
+
+            !XY residual calcualation based on 2nd PK, total lagrangian
+            !multiply 2nd PK stress with deformation graident tensor F transposed
+            CALL MATRIX_TRANSPOSE(DZDNU, DNUDZ,ERR,ERROR,*999)
+            CALL MATRIX_PRODUCT(CAUCHY_TENSOR,DNUDZ,TEMP,ERR,ERROR,*999)
+
             DO component_idx=1,NUMBER_OF_DIMENSIONS
               DEPENDENT_COMPONENT_INTERPOLATION_TYPE=DEPENDENT_FIELD%VARIABLES(var1)%COMPONENTS(component_idx)%INTERPOLATION_TYPE
               IF(DEPENDENT_COMPONENT_INTERPOLATION_TYPE==FIELD_NODE_BASED_INTERPOLATION) THEN !node based
@@ -889,11 +940,20 @@ CONTAINS
                 NUMBER_OF_FIELD_COMPONENT_INTERPOLATION_PARAMETERS=DEPENDENT_BASIS%NUMBER_OF_ELEMENT_PARAMETERS
                 DO parameter_idx=1,NUMBER_OF_FIELD_COMPONENT_INTERPOLATION_PARAMETERS
                   element_dof_idx=element_dof_idx+1
+
+                  !XY Residual calculation based on 2nd PK, total Lagrangian
+                  AGE = DFDXN(parameter_idx,1)*TEMP(1,component_idx) + DFDXN(parameter_idx,2)*TEMP(2,component_idx) + &
+                    & DFDXN(parameter_idx,3)*TEMP(3,component_idx)
+
+                  NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx) = &
+                    & NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx) + &
+                    & GAUSS_WEIGHT*GEOMETRIC_INTERPOLATED_POINT_METRICS%JACOBIAN*AGE
+
                   DO component_idx2=1,NUMBER_OF_DIMENSIONS
-                    NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx)= &
-                      & NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx)+ &
-                      & GAUSS_WEIGHT*Jxxi*Jznu*THICKNESS*CAUCHY_TENSOR(component_idx,component_idx2)* &
-                      & DFDZ(parameter_idx,component_idx2)
+!                    NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx)= &
+!                      & NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx)+ &
+!                      & GAUSS_WEIGHT*Jxxi*Jznu*THICKNESS*CAUCHY_TENSOR(component_idx,component_idx2)* &
+!                      & DFDZ(parameter_idx,component_idx2)
                   ENDDO ! component_idx2 (inner component index)
                 ENDDO ! parameter_idx (residual vector loop)
               ELSEIF(DEPENDENT_COMPONENT_INTERPOLATION_TYPE==FIELD_ELEMENT_BASED_INTERPOLATION) THEN
@@ -1980,16 +2040,18 @@ CONTAINS
   !
 
   !>Calculate the Green-Lagrange strain tensor at a given element xi location.
-  SUBROUTINE FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,values,stress2PK,stressCauchy,err,error,*)
+  SUBROUTINE FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*)
     ! Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
     INTEGER(INTG), INTENT(IN) :: userElementNumber
     REAL(DP), INTENT(IN) :: xi(:)
+    TYPE(CELLML_TYPE), POINTER :: cellML
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
     REAL(DP), INTENT(OUT) :: stressCauchy(6) !<The interpolated cauchy stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string.
+
     ! Local variables
     TYPE(EQUATIONS_TYPE), POINTER :: equations
     TYPE(FIELD_TYPE), POINTER :: dependentField
@@ -2013,7 +2075,13 @@ CONTAINS
     REAL(DP) :: I1,I2,I3
     REAL(DP) :: JXXi, Jznu
     REAL(DP), DIMENSION (:), POINTER :: C !Parameters for constitutive laws
+    REAL(DP), DIMENSION (:), POINTER :: vector !Parameters for constitutive laws
     REAL(DP) :: TEMPTERM, Q  !Temporary variables
+    TYPE(CELLML_MODEL_TYPE), POINTER :: model
+    REAL(DP) :: rates(1),states(1)
+    TYPE(CELLML_EQUATIONS_TYPE), POINTER :: cellMLEquations
+    TYPE(SOLVER_TYPE), POINTER :: cellMLSolver
+    TYPE(CELLML_TYPE), POINTER :: cellMLEnvironment
 
     CALL Enters("FiniteElasticity_StrainInterpolateXi",err,error,*999)
 
@@ -2065,96 +2133,116 @@ CONTAINS
     CALL DomainTopology_ElementBasisGet( &
       & domainTopology,userElementNumber,elementBasis,err,error,*999)
 
+    !Get the interpolation parameters for this element
+    CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber, &
+      & equations%interpolation%geometric_interp_parameters(FIELD_U_VARIABLE_TYPE)%ptr,err,error,*999)
+    IF(ASSOCIATED(equations%interpolation%fibre_interp_parameters)) THEN
+      CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber, &
+        & equations%interpolation%fibre_interp_parameters(FIELD_U_VARIABLE_TYPE)%ptr,err,error,*999)
+    END IF
+    CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber, &
+      & equations%interpolation%dependent_interp_parameters(dependentVarType)%ptr,err,error,*999)
+    CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber, &
+      & equations%interpolation%materials_interp_parameters(FIELD_U_VARIABLE_TYPE)%ptr,err,error,*999)
+
+    !Get interpolated points
+    geometricInterpolatedPoint=>equations%interpolation%geometric_interp_point(FIELD_U_VARIABLE_TYPE)%ptr
+    IF(ASSOCIATED(equations%interpolation%fibre_interp_point)) THEN
+      fibreInterpolatedPoint=>equations%interpolation%fibre_interp_point(FIELD_U_VARIABLE_TYPE)%ptr
+    END IF
+    dependentInterpolatedPoint=>equations%interpolation%dependent_interp_point(dependentVarType)%ptr
+    MATERIALS_INTERPOLATED_POINT=>equations%interpolation%materials_interp_point(FIELD_U_VARIABLE_TYPE)%ptr
+
+    !Get interpolated point metrics
+    geometricInterpolatedPointMetrics=>equations%interpolation% &
+      & geometric_interp_point_metrics(FIELD_U_VARIABLE_TYPE)%ptr
+    dependentInterpolatedPointMetrics=>equations%interpolation% &
+      & dependent_interp_point_metrics(dependentVarType)%ptr
+
+    !Interpolate fields at xi position
+    CALL FIELD_INTERPOLATE_XI(FIRST_PART_DERIV,xi,dependentInterpolatedPoint,err,error,*999)
+    CALL FIELD_INTERPOLATE_XI(FIRST_PART_DERIV,xi,geometricInterpolatedPoint,err,error,*999)
+    IF(ASSOCIATED(fibreInterpolatedPoint)) THEN
+      CALL FIELD_INTERPOLATE_XI(FIRST_PART_DERIV,xi,fibreInterpolatedPoint,err,error,*999)
+    END IF
+
+    ! Calculate field metrics
+    CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE( &
+      & elementBasis%number_of_xi,geometricInterpolatedPointMetrics,err,error,*999)
+    CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE( &
+      & elementBasis%number_of_xi,dependentInterpolatedPointMetrics,err,error,*999)
+
+    !Calculate F=dZ/dNU, the deformation gradient tensor at the xi location
+    numberOfDimensions=equationsSet%region%coordinate_system%number_of_dimensions
+    numberOfXi=elementBasis%number_of_xi
+    CALL FiniteElasticityGaussDeformationGradientTensor(dependentInterpolatedPointMetrics, &
+      & geometricInterpolatedPointMetrics,fibreInterpolatedPoint, &
+      & dZdNu,JXXi,err,error,*999)
+
+    !Calculate E
+    CALL MATRIX_TRANSPOSE(dZdNu,dZdNuT,err,error,*999)
+    CALL MATRIX_PRODUCT(dZdNuT,dZdNu,AZL,err,error,*999)
+    E=0.5_DP*AZL
+    DO i=1,3
+      E(i,i)=E(i,i)-0.5_DP
+    END DO
+
+    CALL INVERT(AZL, AZU, I3, err, error, *999)
+    Jznu = I3**0.5_DP
+    IDENTITY = 0.0_DP
+    DO i=1,3
+      IDENTITY(i,i)=1.0_DP
+    ENDDO
+
+    pressure_component=dependentInterpolatedPoint%interpolation_parameters%field_variable%number_of_components
+    P = dependentInterpolatedPoint%values(pressure_component, 1)
+
+
+    !Set output E components
+    values(1)=E(1,1)
+    values(2)=E(1,2)
+    values(3)=E(1,3)
+    values(4)=E(2,2)
+    values(5)=E(2,3)
+    values(6)=E(3,3)
 
     ! Check for CellML evaluation of strain and stress
     IF (equationsSet%subtype == EQUATIONS_SET_CONSTITUTIVE_LAW_IN_CELLML_EVALUATE_SUBTYPE) THEN
-      CALL FlagError("Please use StressStrainEvaluateGaussCellML subroutine for evaluating stresses at gauss points in &
-        & CellML.",err,error,*999)
-    ELSE
-      !Get the interpolation parameters for this element
-      CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber, &
-        & equations%interpolation%geometric_interp_parameters(FIELD_U_VARIABLE_TYPE)%ptr,err,error,*999)
-      IF(ASSOCIATED(equations%interpolation%fibre_interp_parameters)) THEN
-        CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber, &
-          & equations%interpolation%fibre_interp_parameters(FIELD_U_VARIABLE_TYPE)%ptr,err,error,*999)
-      END IF
-      CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber, &
-        & equations%interpolation%dependent_interp_parameters(dependentVarType)%ptr,err,error,*999)
-
-      !Get interpolated points
-      geometricInterpolatedPoint=>equations%interpolation%geometric_interp_point(FIELD_U_VARIABLE_TYPE)%ptr
-      IF(ASSOCIATED(equations%interpolation%fibre_interp_point)) THEN
-        fibreInterpolatedPoint=>equations%interpolation%fibre_interp_point(FIELD_U_VARIABLE_TYPE)%ptr
-      END IF
-      dependentInterpolatedPoint=>equations%interpolation%dependent_interp_point(dependentVarType)%ptr
-
-      !Get interpolated point metrics
-      geometricInterpolatedPointMetrics=>equations%interpolation% &
-        & geometric_interp_point_metrics(FIELD_U_VARIABLE_TYPE)%ptr
-      dependentInterpolatedPointMetrics=>equations%interpolation% &
-        & dependent_interp_point_metrics(dependentVarType)%ptr
-
-
-      !Interpolate fields at xi position
-      CALL FIELD_INTERPOLATE_XI(FIRST_PART_DERIV,xi,dependentInterpolatedPoint,err,error,*999)
-      CALL FIELD_INTERPOLATE_XI(FIRST_PART_DERIV,xi,geometricInterpolatedPoint,err,error,*999)
-      IF(ASSOCIATED(fibreInterpolatedPoint)) THEN
-        CALL FIELD_INTERPOLATE_XI(FIRST_PART_DERIV,xi,fibreInterpolatedPoint,err,error,*999)
-      END IF
-
-      ! Calculate field metrics
-      CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE( &
-        & elementBasis%number_of_xi,geometricInterpolatedPointMetrics,err,error,*999)
-      CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE( &
-        & elementBasis%number_of_xi,dependentInterpolatedPointMetrics,err,error,*999)
-
-      !Calculate F=dZ/dNU, the deformation gradient tensor at the xi location
-      numberOfDimensions=equationsSet%region%coordinate_system%number_of_dimensions
-      numberOfXi=elementBasis%number_of_xi
-      CALL FiniteElasticityGaussDeformationGradientTensor(dependentInterpolatedPointMetrics, &
-        & geometricInterpolatedPointMetrics,fibreInterpolatedPoint, &
-        & dZdNu,JXXi,err,error,*999)
-
-      !Calculate E
-      CALL MATRIX_TRANSPOSE(dZdNu,dZdNuT,err,error,*999)
-      CALL MATRIX_PRODUCT(dZdNuT,dZdNu,AZL,err,error,*999)
-      E=0.5_DP*AZL
-      DO i=1,3
-        E(i,i)=E(i,i)-0.5_DP
-      END DO
-
-      CALL INVERT(AZL, AZU, I3, err, error, *999)
-      Jznu = I3**0.5_DP
-      IDENTITY = 0.0_DP
-      DO i=1,3
-        IDENTITY(i,i)=1.0_DP
-      ENDDO
-
-      pressure_component=dependentInterpolatedPoint%interpolation_parameters%field_variable%number_of_components
-      P = dependentInterpolatedPoint%values(pressure_component, 1)
-
-
-      !Set output E components
-      values(1)=E(1,1)
-      values(2)=E(1,2)
-      values(3)=E(1,3)
-      values(4)=E(2,2)
-      values(5)=E(2,3)
-      values(6)=E(3,3)
-
       !Evaluate stresses based on equation set subtype.
-      MATERIALS_INTERPOLATED_POINT=>EQUATIONS%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR
+      C => MATERIALS_INTERPOLATED_POINT%interpolation_parameters%parameters(1,:)
 
+      ALLOCATE(vector(size(values)+size(C)))
+      vector(1:size(values)) = values
+      vector(size(values)+1:size(values)+size(C))= C
+      !IF(ASSOCIATED(cellML)) THEN
+        model=>cellML%models(1)%ptr
+        CALL CELLML_MODEL_DEFINITION_CALL_RHS_ROUTINE(model%ptr,0.0_DP,states,rates,stress2PK,vector)
+        ! Add hydrostatic pressure.
+        stress2PK(1)=stress2PK(1)+2.0_DP*P*AZU(1,1)
+        stress2PK(2)=stress2PK(2)+2.0_DP*P*AZU(1,2)
+        stress2PK(3)=stress2PK(2)+2.0_DP*P*AZU(1,3)
+        stress2PK(4)=stress2PK(2)+2.0_DP*P*AZU(2,2)
+        stress2PK(5)=stress2PK(2)+2.0_DP*P*AZU(2,3)
+        stress2PK(6)=stress2PK(2)+2.0_DP*P*AZU(3,3)
+
+        PIOLA_TENSOR(1,1)=stress2PK(1)
+        PIOLA_TENSOR(1,2)=stress2PK(2)
+        PIOLA_TENSOR(1,3)=stress2PK(3)
+        PIOLA_TENSOR(2,2)=stress2PK(4)
+        PIOLA_TENSOR(2,3)=stress2PK(5)
+        PIOLA_TENSOR(3,3)=stress2PK(6)
+        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
+        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
+        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
+      !ELSE
+      !  local_error="The cellML environment is not associated."
+      !  CALL flag_error(local_error,err,error,*999)
+      !ENDIF
+    ELSE
+      C => MATERIALS_INTERPOLATED_POINT%interpolation_parameters%parameters(1,:)
       CALL FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE(equationsSet%subType,C,MATERIALS_INTERPOLATED_POINT,&
         & E,AZL,AZU,Jznu,P,PIOLA_TENSOR,err, error, *999)
     ENDIF
-
-    stress2PK(1)=PIOLA_TENSOR(1,1)
-    stress2PK(2)=PIOLA_TENSOR(1,2)
-    stress2PK(3)=PIOLA_TENSOR(1,3)
-    stress2PK(4)=PIOLA_TENSOR(2,2)
-    stress2PK(5)=PIOLA_TENSOR(2,3)
-    stress2PK(6)=PIOLA_TENSOR(3,3)
 
     CALL MATRIX_PRODUCT(dZdNu,PIOLA_TENSOR,TEMP,ERR,ERROR,*999)
     CALL MATRIX_PRODUCT(TEMP,dZdNuT,CAUCHY_TENSOR,ERR,ERROR,*999)
@@ -2168,6 +2256,13 @@ CONTAINS
     stressCauchy(4)=CAUCHY_TENSOR(2,2)
     stressCauchy(5)=CAUCHY_TENSOR(2,3)
     stressCauchy(6)=CAUCHY_TENSOR(3,3)
+
+    stress2PK(1)=PIOLA_TENSOR(1,1)
+    stress2PK(2)=PIOLA_TENSOR(1,2)
+    stress2PK(3)=PIOLA_TENSOR(1,3)
+    stress2PK(4)=PIOLA_TENSOR(2,2)
+    stress2PK(5)=PIOLA_TENSOR(2,3)
+    stress2PK(6)=PIOLA_TENSOR(3,3)
 
     CALL Exits("FiniteElasticity_StrainInterpolateXi")
     RETURN
@@ -3444,6 +3539,96 @@ CONTAINS
     CALL EXITS("FINITE_ELASTICITY_GAUSS_DFDZ")
     RETURN 1
   END SUBROUTINE FINITE_ELASTICITY_GAUSS_DFDZ
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Evaluates df/dXn (derivative of interpolation function wrt undeformed coord) matrix at a given Gauss point
+  SUBROUTINE FINITE_ELASTICITY_GAUSS_DFDXN(INTERPOLATED_POINT,ELEMENT_NUMBER,GAUSS_POINT_NUMBER,NUMBER_OF_DIMENSIONS, &
+    & NUMBER_OF_XI,DFDXN,ERR,ERROR,*)
+
+    !Argument variables
+    TYPE(FIELD_INTERPOLATED_POINT_TYPE), POINTER :: INTERPOLATED_POINT !<Interpolated point for the dependent field
+    INTEGER(INTG), INTENT(IN) :: ELEMENT_NUMBER !<The element number
+    INTEGER(INTG), INTENT(IN) :: GAUSS_POINT_NUMBER !<The gauss point number
+    INTEGER(INTG), INTENT(IN) :: NUMBER_OF_DIMENSIONS !<The number of dimensions
+    INTEGER(INTG), INTENT(IN) :: NUMBER_OF_XI !<The number of xi directions for the interpolation
+    REAL(DP), INTENT(OUT) :: DFDXN(:,:) !<On return, a matrix containing the derivatives of the basis functions wrt the deformed coordinates
+    INTEGER(INTG), INTENT(OUT) :: ERR !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
+    !Local Variables
+    TYPE(BASIS_TYPE), POINTER :: COMPONENT_BASIS
+    TYPE(FIELD_TYPE), POINTER :: FIELD
+    TYPE(QUADRATURE_SCHEME_TYPE), POINTER :: QUADRATURE_SCHEME
+    INTEGER(INTG) :: NUMBER_OF_FIELD_COMPONENT_INTERPOLATION_PARAMETERS,derivative_idx,component_idx,xi_idx,parameter_idx
+    REAL(DP) :: DXIDZ(NUMBER_OF_DIMENSIONS,NUMBER_OF_DIMENSIONS),DZDXI(NUMBER_OF_DIMENSIONS,NUMBER_OF_DIMENSIONS), &
+      & DXIXN(NUMBER_OF_XI,NUMBER_OF_DIMENSIONS),DXRCXN(NUMBER_OF_DIMENSIONS,NUMBER_OF_DIMENSIONS)
+    REAL(DP) :: Jzxi,DFDXI(NUMBER_OF_DIMENSIONS,64,NUMBER_OF_XI)!temporary until a proper alternative is found
+
+
+    CALL ENTERS("FINITE_ELASTICITY_GAUSS_DFDXN",ERR,ERROR,*999)
+
+    !Initialise DFDXI array
+    DFDXI=0.0_DP  ! DFDXI(component_idx,parameter_idx,xi_idx)
+    DFDXN=0.0_DP
+    DO component_idx=1,NUMBER_OF_DIMENSIONS !Always 3 spatial coordinates (3D)
+      DO xi_idx=1,NUMBER_OF_XI !Thus always 3 element coordinates
+        derivative_idx=PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(xi_idx)  !2,4,7
+        DZDXI(component_idx,xi_idx)=INTERPOLATED_POINT%VALUES(component_idx,derivative_idx)  !dz/dxi
+      ENDDO
+    ENDDO
+
+    ! Populate a 3 x 3 square dzdXi if this is a membrane problem in 3D space
+    IF (NUMBER_OF_DIMENSIONS == 3 .AND. NUMBER_OF_XI == 2) THEN
+        CALL CROSS_PRODUCT(DZDXI(:,1),DZDXI(:,2),DZDXI(:,3),ERR,ERROR,*999)
+        DZDXI(:,3) = NORMALISE(DZDXI(:,3),ERR,ERROR)
+    ENDIF
+
+    CALL INVERT(DZDXI,DXIDZ,Jzxi,ERR,ERROR,*999) !dxi/dz
+
+    FIELD=>INTERPOLATED_POINT%INTERPOLATION_PARAMETERS%FIELD
+    DO component_idx=1,NUMBER_OF_DIMENSIONS
+      COMPONENT_BASIS=>FIELD%VARIABLES(1)%COMPONENTS(component_idx)%DOMAIN%TOPOLOGY%ELEMENTS% &
+        & ELEMENTS(ELEMENT_NUMBER)%BASIS
+      QUADRATURE_SCHEME=>COMPONENT_BASIS%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
+      DO parameter_idx=1,size(QUADRATURE_SCHEME%GAUSS_BASIS_FNS,1)
+        DO xi_idx=1,NUMBER_OF_XI
+          derivative_idx=PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(xi_idx)  !2,4,7
+          DFDXI(component_idx,parameter_idx,xi_idx)=QUADRATURE_SCHEME%GAUSS_BASIS_FNS(parameter_idx,derivative_idx, &
+            & GAUSS_POINT_NUMBER)
+        ENDDO
+      ENDDO
+    ENDDO
+
+    ! Get DXrc/DXn, same as cm MAT_VEC
+    CALL FiniteElasticity_FibreReferenceVectorEvaluate(DZDXI,DXRCXN,ERR,ERROR,*999)
+
+    CALL MATRIX_PRODUCT(DXIDZ,DXRCXN,DXIXN,ERR,ERROR,*999)
+
+    DO component_idx=1,NUMBER_OF_DIMENSIONS
+      COMPONENT_BASIS=>FIELD%VARIABLES(1)%COMPONENTS(component_idx)%DOMAIN%TOPOLOGY%ELEMENTS% &
+        & ELEMENTS(ELEMENT_NUMBER)%BASIS
+!       NUMBER_OF_FIELD_COMPONENT_INTERPOLATION_PARAMETERS=FIELD%VARIABLES(1)%COMPONENTS(component_idx)% &
+!         & MAX_NUMBER_OF_INTERPOLATION_PARAMETERS
+      NUMBER_OF_FIELD_COMPONENT_INTERPOLATION_PARAMETERS=COMPONENT_BASIS%NUMBER_OF_ELEMENT_PARAMETERS
+      DO parameter_idx=1,NUMBER_OF_FIELD_COMPONENT_INTERPOLATION_PARAMETERS
+          DO xi_idx=1,NUMBER_OF_XI
+            DFDXN(parameter_idx,component_idx)= DFDXN(parameter_idx,component_idx) + &
+              & DFDXI(component_idx,parameter_idx,xi_idx) * DXIXN(xi_idx,component_idx)
+        ENDDO
+      ENDDO
+    ENDDO
+
+    ! Get DXrc/DXn, same as cm MAT_VEC
+    CALL FiniteElasticity_FibreReferenceVectorEvaluate(DZDXI,DXRCXN,ERR,ERROR,*999)
+
+    CALL EXITS("FINITE_ELASTICITY_GAUSS_DFDXN")
+    RETURN
+999 CALL ERRORS("FINITE_ELASTICITY_GAUSS_DFDXN",ERR,ERROR)
+    CALL EXITS("FINITE_ELASTICITY_GAUSS_DFDXN")
+    RETURN 1
+  END SUBROUTINE FINITE_ELASTICITY_GAUSS_DFDXN
 
   !
   !================================================================================================================================
