@@ -1981,12 +1981,13 @@ CONTAINS
   !
 
   !>Calculate the Green-Lagrange strain tensor at a given element xi location.
-  SUBROUTINE FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*)
+  SUBROUTINE FiniteElasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,interpt,values,stress2PK,stressCauchy,err,error,*)
     ! Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
     INTEGER(INTG), INTENT(IN) :: userElementNumber
     REAL(DP), INTENT(IN) :: xi(:)
     TYPE(CELLML_TYPE), POINTER :: cellML
+    REAL(DP), INTENT(OUT) :: interpt(3) !< The dependent field value interpolated at specified xi.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
     REAL(DP), INTENT(OUT) :: stressCauchy(6) !<The interpolated cauchy stress tensor values.
@@ -2107,6 +2108,11 @@ CONTAINS
       CALL FIELD_INTERPOLATE_XI(FIRST_PART_DERIV,xi,fibreInterpolatedPoint,err,error,*999)
     END IF
 
+    ! Get dependent field interpolated coordinate at current xi.
+    DO i = 1,3
+      interpt(i)=dependentInterpolatedPoint%values(i,1)
+    END DO
+
     ! Calculate field metrics
     CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE( &
       & elementBasis%number_of_xi,geometricInterpolatedPointMetrics,err,error,*999)
@@ -2137,7 +2143,6 @@ CONTAINS
 
     pressure_component=dependentInterpolatedPoint%interpolation_parameters%field_variable%number_of_components
     P = dependentInterpolatedPoint%values(pressure_component, 1)
-
 
     !Set output E components
     values(1)=E(1,1)

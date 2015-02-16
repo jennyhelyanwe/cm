@@ -6266,13 +6266,14 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location.
-  SUBROUTINE EquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*)
+  SUBROUTINE EquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,interpt,values,stress2PK,stressCauchy,err,error,*)
 
     !Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
     TYPE(CELLML_TYPE), POINTER :: cellML !<The CellML environment object in which to create the map.
+    REAL(DP), INTENT(OUT) :: interpt(3) !< The dependent field value interpolated at specified xi.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
     REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress values.
     REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
@@ -6290,7 +6291,7 @@ CONTAINS
 
     SELECT CASE(equationsSet%class)
     CASE(EQUATIONS_SET_ELASTICITY_CLASS)
-      CALL Elasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,values,stress2PK,stressCauchy,err,error,*999)
+      CALL Elasticity_StrainInterpolateXi(equationsSet,userElementNumber,xi,cellML,interpt,values,stress2PK,stressCauchy,err,error,*999)
     CASE(EQUATIONS_SET_FLUID_MECHANICS_CLASS)
       CALL FlagError("Not implemented.",err,error,*999)
     CASE(EQUATIONS_SET_ELECTROMAGNETICS_CLASS)
