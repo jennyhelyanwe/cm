@@ -116,7 +116,8 @@ MODULE FINITE_ELASTICITY_ROUTINES
     & FINITE_ELASTICITY_PRE_SOLVE,FINITE_ELASTICITY_CONTROL_TIME_LOOP_PRE_LOOP,FiniteElasticity_ControlLoadIncrementLoopPostLoop, &
     & EVALUATE_CHAPELLE_FUNCTION, GET_DARCY_FINITE_ELASTICITY_PARAMETERS, &
     & FiniteElasticityGaussDeformationGradientTensor,FINITE_ELASTICITY_LOAD_INCREMENT_APPLY, &
-    & FINITE_ELASTICITY_FINITE_ELEMENT_PRE_RESIDUAL_EVALUATE,FINITE_ELASTICITY_FINITE_ELEMENT_POST_RESIDUAL_EVALUATE
+    & FINITE_ELASTICITY_FINITE_ELEMENT_PRE_RESIDUAL_EVALUATE,FINITE_ELASTICITY_FINITE_ELEMENT_POST_RESIDUAL_EVALUATE, &
+    & FINITE_ELASTICITY_FINITE_ELEMENT_JACOBIAN_EVALUATE
 
   PUBLIC FiniteElasticityEquationsSet_DerivedVariableCalculate, &
     & FiniteElasticity_StrainInterpolateXi, FiniteElasticity_StressStrainEvaluateGaussCellML
@@ -2381,7 +2382,8 @@ CONTAINS
     !Grab pointers of interest
     EQUATIONS=>EQUATIONS_SET%EQUATIONS
     EQUATIONS_MATRICES=>EQUATIONS%EQUATIONS_MATRICES
-    EQUATIONS_RHS=>EQUATIONS_MATRICES%RHS_VECTOR
+    NONLINEAR_MATRICES=>EQUATIONS_MATRICES%NONLINEAR_MATRICES
+    !EQUATIONS_RHS=>EQUATIONS_MATRICES%RHS_VECTOR
     IF(.NOT.ASSOCIATED(EQUATIONS_RHS)) THEN
       CALL FlagError("Equations matrices RHS not associated.",err,error,*999)
     END IF
@@ -2482,8 +2484,8 @@ CONTAINS
                   parameter_idx=DEPENDENT_BASIS%ELEMENT_PARAMETER_INDEX(node_derivative_idx,element_node_idx)
                   face_parameter_idx=FACE_BASIS%ELEMENT_PARAMETER_INDEX(face_node_derivative_idx,face_node_idx)
                   element_dof_idx=element_base_dof_idx+parameter_idx
-                  EQUATIONS_RHS%ELEMENT_VECTOR%VECTOR(element_dof_idx)= &
-                    & EQUATIONS_RHS%ELEMENT_VECTOR%VECTOR(element_dof_idx)- &  ! sign: negative as p(appl) always opposite to normal
+                  NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx)=&
+                    & NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx - &  ! sign: negative as p(appl) always opposite to normal
                     & GAUSS_WEIGHT*PRESSURE_GAUSS*NORMAL_PROJECTION* &
                     & FACE_QUADRATURE_SCHEME%GAUSS_BASIS_FNS(face_parameter_idx,NO_PART_DERIV,gauss_idx)* &
                     & SQRT_G
