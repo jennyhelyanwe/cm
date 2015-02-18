@@ -3101,12 +3101,6 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSEquationsSet_StrainInterpolateXiObj
   END INTERFACE CMISSEquationsSet_StrainInterpolateXi
 
-  !>Calculate the strain tensor at a given gauss point location for CellML linking.
-  INTERFACE CMISSEquationsSet_StressStrainEvaluateGaussCellML
-    MODULE PROCEDURE CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber
-    MODULE PROCEDURE CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj
-  END INTERFACE CMISSEquationsSet_StressStrainEvaluateGaussCellML
-
   !>Gets the equations set analytic user parameter
   INTERFACE CMISSEquationsSet_AnalyticUserParamGet
     MODULE PROCEDURE CMISSEquationsSet_AnalyticUserParamGetNumber
@@ -3163,8 +3157,6 @@ MODULE OPENCMISS
   PUBLIC CMISSEquationsSet_SpecificationGet,CMISSEquationsSet_SpecificationSet
 
   PUBLIC CMISSEquationsSet_StrainInterpolateXi
-
-  PUBLIC CMISSEquationsSet_StressStrainEvaluateGaussCellML
 
   PUBLIC CMISSEquationsSet_AnalyticUserParamSet,CMISSEquationsSet_AnalyticUserParamGet
   
@@ -5978,6 +5970,7 @@ MODULE OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_SOLVER_NONLINEAR_NEWTON = SOLVER_NONLINEAR_NEWTON !<Newton nonlinear solver type. \see OPENCMISS_NonlinearSolverTypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_SOLVER_NONLINEAR_BFGS_INVERSE = SOLVER_NONLINEAR_BFGS_INVERSE !<BFGS inverse nonlinear solver type. \see OPENCMISS_NonlinearSolverTypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_SOLVER_NONLINEAR_SQP = SOLVER_NONLINEAR_SQP !<Sequential Quadratic Program nonlinear solver type. \see OPENCMISS_NonlinearSolverTypes,OPENCMISS
+#if ( PETSC_VERSION_MAJOR >= 3 && PETSC_VERSION_MINOR >= 5 )
   INTEGER(INTG), PARAMETER :: CMISS_SOLVER_NONLINEAR_QUASI_NEWTON = SOLVER_NONLINEAR_QUASI_NEWTON !<Quasi-Newton nonlinear solver type. \see OPENCMISS_NonlinearSolverTypes,OPENCMISS
   !>@}
   !> \addtogroup OPENCMISS_QuasiNewtonSolverTypes OPENCMISS::Solver::QuasiNewtonSolverTypes
@@ -6020,6 +6013,7 @@ MODULE OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_SOLVER_QUASI_NEWTON_SCALE_LINESEARCH=SOLVER_QUASI_NEWTON_SCALE_LINESEARCH !<Scale based upon line search lambda \see OPENCMISS_QuasiNewtonScaleTypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_SOLVER_QUASI_NEWTON_SCALE_JACOBIAN=SOLVER_QUASI_NEWTON_SCALE_JACOBIAN !<Scale by inverting a previously computed Jacobian \see OPENCMISS_QuasiNewtonScaleTypes,OPENCMISS
   !>@}
+#endif
   !> \addtogroup OPENCMISS_NewtonSolverTypes OPENCMISS::Solver::NewtonSolverTypes
   !> \brief The types of nonlinear Newton solvers.
   !> \see OPENCMISS::Solver::Constants,OPENCMISS
@@ -6439,6 +6433,7 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSSolver_LinearTypeSetObj
   END INTERFACE !CMISSSolver_LinearTypeSet
 
+#if ( PETSC_VERSION_MAJOR >= 3 && PETSC_VERSION_MINOR >= 5 )
   !>Sets/changes the absolute tolerance for a nonlinear Quasi-Newton solver.
   INTERFACE CMISSSolver_QuasiNewtonAbsoluteToleranceSet
     MODULE PROCEDURE CMISSSolver_QuasiNewtonAbsoluteToleranceSetNumber0
@@ -6578,6 +6573,7 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSSolver_QuasiNewtonTypeSetNumber1
     MODULE PROCEDURE CMISSSolver_QuasiNewtonTypeSetObj
   END INTERFACE !CMISSSolver_QuasiNewtonTypeSet
+#endif
 
   !>Sets/changes the absolute tolerance for a nonlinear Newton solver.
   INTERFACE CMISSSolver_NewtonAbsoluteToleranceSet
@@ -6790,8 +6786,9 @@ MODULE OPENCMISS
     & CMISS_SOLVER_ITERATIVE_INCOMPLETE_CHOLESKY_PRECONDITIONER,CMISS_SOLVER_ITERATIVE_INCOMPLETE_LU_PRECONDITIONER, &
     & CMISS_SOLVER_ITERATIVE_ADDITIVE_SCHWARZ_PRECONDITIONER
 
-  PUBLIC CMISS_SOLVER_NONLINEAR_NEWTON,CMISS_SOLVER_NONLINEAR_BFGS_INVERSE,CMISS_SOLVER_NONLINEAR_SQP, &
-    & CMISS_SOLVER_NONLINEAR_QUASI_NEWTON
+  PUBLIC CMISS_SOLVER_NONLINEAR_NEWTON,CMISS_SOLVER_NONLINEAR_BFGS_INVERSE,CMISS_SOLVER_NONLINEAR_SQP
+#if ( PETSC_VERSION_MAJOR >= 3 && PETSC_VERSION_MINOR >= 5 )  
+  PUBLIC CMISS_SOLVER_NONLINEAR_QUASI_NEWTON
 
   PUBLIC CMISS_SOLVER_QUASI_NEWTON_LINESEARCH,CMISS_SOLVER_QUASI_NEWTON_TRUSTREGION
 
@@ -6805,6 +6802,7 @@ MODULE OPENCMISS
 
   PUBLIC CMISS_SOLVER_QUASI_NEWTON_SCALE_NONE,CMISS_SOLVER_QUASI_NEWTON_SCALE_SHANNO, &
     & CMISS_SOLVER_QUASI_NEWTON_SCALE_LINESEARCH,CMISS_SOLVER_QUASI_NEWTON_SCALE_JACOBIAN
+#endif
 
   PUBLIC CMISS_SOLVER_NEWTON_LINESEARCH,CMISS_SOLVER_NEWTON_TRUSTREGION
 
@@ -6945,45 +6943,48 @@ MODULE OPENCMISS
 
   PUBLIC CMISSSolver_NewtonTypeSet
 
-  PUBLIC CMISSSolver_QuasiNewtonAbsoluteToleranceSet
-
-  PUBLIC CMISSSolver_QuasiNewtonLineSearchMonitorOutputSet
-
-  PUBLIC CMISSSolver_QuasiNewtonJacobianCalculationTypeSet
-
-  PUBLIC CMISSSolver_QuasiNewtonLinearSolverGet
-
-  PUBLIC CMISSSolver_QuasiNewtonCellMLSolverGet
-
-  PUBLIC CMISSSolver_QuasiNewtonConvergenceTestTypeSet
-
-  PUBLIC CMISSSolver_QuasiNewtonLineSearchMaxStepSet
-
-  PUBLIC CMISSSolver_QuasiNewtonLineSearchStepTolSet
-
-  PUBLIC CMISSSolver_QuasiNewtonLineSearchTypeSet
-
-  PUBLIC CMISSSolver_QuasiNewtonMaximumFunctionEvaluationsSet
-
-  PUBLIC CMISSSolver_QuasiNewtonMaximumIterationsSet
-
-  PUBLIC CMISSSolver_QuasiNewtonRelativeToleranceSet
-
-  PUBLIC CMISSSolver_QuasiNewtonSolutionToleranceSet
-
-  PUBLIC CMISSSolver_QuasiNewtonTrustRegionDelta0Set
-
-  PUBLIC CMISSSolver_QuasiNewtonTrustRegionToleranceSet
-
-  PUBLIC CMISSSolver_QuasiNewtonRestartSet
-
-  PUBLIC CMISSSolver_QuasiNewtonRestartTypeSet
-
-  PUBLIC CMISSSolver_QuasiNewtonScaleTypeSet
-
-  PUBLIC CMISSSolver_QuasiNewtonSolveTypeSet
-
-  PUBLIC CMISSSolver_QuasiNewtonTypeSet
+! Uncomment if you have PETSC 3.5, otherwise this gives problems for the Python interface
+#if ( PETSC_VERSION_MAJOR >= 3 && PETSC_VERSION_MINOR >= 5 )
+! PUBLIC CMISSSolver_QuasiNewtonAbsoluteToleranceSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonLineSearchMonitorOutputSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonJacobianCalculationTypeSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonLinearSolverGet
+!
+! PUBLIC CMISSSolver_QuasiNewtonCellMLSolverGet
+!
+! PUBLIC CMISSSolver_QuasiNewtonConvergenceTestTypeSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonLineSearchMaxStepSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonLineSearchStepTolSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonLineSearchTypeSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonMaximumFunctionEvaluationsSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonMaximumIterationsSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonRelativeToleranceSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonSolutionToleranceSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonTrustRegionDelta0Set
+!
+! PUBLIC CMISSSolver_QuasiNewtonTrustRegionToleranceSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonRestartSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonRestartTypeSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonScaleTypeSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonSolveTypeSet
+!
+! PUBLIC CMISSSolver_QuasiNewtonTypeSet
+#endif
 
   PUBLIC CMISSSolver_NonlinearTypeSet
 
@@ -25992,19 +25993,14 @@ CONTAINS
   !
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by a user number.
-  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,xi,&
-    & cellML, interpt, values,stress2PK,stressCauchy,err)
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,xi,values,err)
 
     !Argument variables
     INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the equations set.
     INTEGER(INTG), INTENT(IN) :: equationsSetUserNumber !<The user number of the equations set to calculate the strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
-    TYPE(CMISSCellMLType), INTENT(IN) :: cellML !<The CellML enviroment.
-    REAL(DP), INTENT(OUT) :: interpt(3) !< The dependent field value interpolated at specified xi.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
-    REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
-    REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
     !Local variables
     TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet
@@ -26021,7 +26017,7 @@ CONTAINS
       CALL EQUATIONS_SET_USER_NUMBER_FIND(equationsSetUserNumber,region,equationsSet,err,error,*999)
       IF(ASSOCIATED(equationsSet)) THEN
         CALL EquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi, &
-          & cellML%cellml,interpt,values,stress2PK,stressCauchy,err,error,*999)
+          & values,err,error,*999)
       ELSE
         localError="An equations set with a user number of "//TRIM(NumberToVstring(equationsSetUserNumber,"*", &
           & err,error))//" does not exist on region number "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//"."
@@ -26041,30 +26037,24 @@ CONTAINS
 
   END SUBROUTINE CMISSEquationsSet_StrainInterpolateXiNumber
 
-
-
   !
   !================================================================================================================================
   !
 
   !>Calculate the strain tensor at a given element xi location, for an equations set identified by an object.
-  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,cellML,interpt, values,stress2PK,stressCauchy,err)
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj(equationsSet,userElementNumber,xi,values,err)
 
     !Argument variables
     TYPE(CMISSEquationsSetType), INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
     INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
     REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
-    TYPE(CMISSCellMLType), INTENT(IN) :: cellML !<The CellML enviroment.
-    REAL(DP), INTENT(OUT) :: interpt(3) !< The dependent field value interpolated at specified xi.
     REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
-    REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress tensor values.
-    REAL(DP), INTENT(OUT) :: stressCauchy(6) !< The interpolated Cauchy stress tensor values.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
 
     CALL Enters("CMISSEquationsSet_StrainInterpolateXiObj",err,error,*999)
 
     CALL EquationsSet_StrainInterpolateXi(equationsSet%equations_set,userElementNumber,xi, &
-      & cellML%cellml,interpt, values,stress2PK,stressCauchy,err,error,*999)
+      & values,err,error,*999)
 
     CALL Exits("CMISSEquationsSet_StrainInterpolateXiObj")
     RETURN
@@ -26074,87 +26064,6 @@ CONTAINS
     RETURN
 
   END SUBROUTINE CMISSEquationsSet_StrainInterpolateXiObj
-
-    !
-  !================================================================================================================================
-  !
-
-  !>Calculate the strain tensor at a given element xi location, for an equations set identified by a user number.
-  SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber(regionUserNumber,equationsSetUserNumber,userElementNumber,gaussPoint,strain,stress2PK,err)
-
-    !Argument variables
-    INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the equations set.
-    INTEGER(INTG), INTENT(IN) :: equationsSetUserNumber !<The user number of the equations set to calculate the strain for.
-    INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
-    INTEGER(INTG), INTENT(IN) :: gaussPoint !<The gauss point index.
-    REAL(DP), INTENT(OUT) :: strain(6) !<The interpolated strain tensor values.
-    REAL(DP), INTENT(OUT) :: stress2PK(6) !<The interpolated 2PK stress tensor values.
-    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
-    !Local variables
-    TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet
-    TYPE(REGION_TYPE), POINTER :: region
-    TYPE(VARYING_STRING) :: localError
-
-    CALL Enters("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber",err,error,*999)
-
-    NULLIFY(equationsSet)
-    NULLIFY(region)
-
-    CALL REGION_USER_NUMBER_FIND(regionUserNumber,region,err,error,*999)
-    IF(ASSOCIATED(region)) THEN
-      CALL EQUATIONS_SET_USER_NUMBER_FIND(equationsSetUserNumber,region,equationsSet,err,error,*999)
-      IF(ASSOCIATED(equationsSet)) THEN
-        CALL EquationsSet_StressStrainEvaluateGaussCellML(equationsSet,userElementNumber,gaussPoint,strain,stress2PK, err,error,*999)
-      ELSE
-        localError="An equations set with a user number of "//TRIM(NumberToVstring(equationsSetUserNumber,"*", &
-          & err,error))//" does not exist on region number "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//"."
-        CALL FlagError(localError,err,error,*999)
-      END IF
-    ELSE
-      localError="A region with an user number of "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//" does not exist."
-      CALL FlagError(localError,err,error,*999)
-    END IF
-
-    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber")
-    RETURN
-999 CALL Errors("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber",err,error)
-    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber")
-    CALL CmissHandleError(err,error)
-    RETURN
-
-  END SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLNumber
-
-
-
-  !
-  !================================================================================================================================
-  !
-
-  !>Calculate the strain tensor at a given element xi location, for an equations set identified by an object.
-  SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj(equationsSet,userElementNumber,gaussPoint,strain,stress2PK,err)
-
-    !Argument variables
-    TYPE(CMISSEquationsSetType), INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
-    INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
-    INTEGER(INTG), INTENT(IN) :: gaussPoint !<The element xi to interpolate the field at.
-    REAL(DP), INTENT(OUT) :: strain(6) !<The interpolated strain tensor values.
-    REAL(DP), INTENT(OUT) :: stress2PK(6) !< The interpolated 2PK stress tensor values.
-    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
-
-    CALL Enters("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj",err,error,*999)
-
-    CALL EquationsSet_StressStrainEvaluateGaussCellML(equationsSet%equations_set,userElementNumber,gaussPoint, &
-      & strain,stress2PK,err,error,*999)
-
-    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj")
-    RETURN
-999 CALL Errors("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj",err,error)
-    CALL Exits("CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj")
-    CALL CmissHandleError(err,error)
-    RETURN
-
-  END SUBROUTINE CMISSEquationsSet_StressStrainEvaluateGaussCellMLObj
-
 
 !!==================================================================================================================================
 !!
@@ -55539,7 +55448,7 @@ CONTAINS
   !
   !================================================================================================================================
   !
-
+#if ( PETSC_VERSION_MAJOR >= 3 && PETSC_VERSION_MINOR >= 5 )
   !>Sets/changes the absolute tolerance for an Quasi-Newton solver identified by an user number.
   SUBROUTINE CMISSSolver_QuasiNewtonAbsoluteToleranceSetNumber0(problemUserNumber,controlLoopIdentifier,solverIndex, &
       & absoluteTolerance,err)
@@ -57727,6 +57636,7 @@ CONTAINS
     RETURN
 
   END SUBROUTINE CMISSSolver_QuasiNewtonTypeSetObj
+#endif
 
   !
   !================================================================================================================================
