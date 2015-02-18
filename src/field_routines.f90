@@ -7723,8 +7723,7 @@ CONTAINS
     INTEGER(INTG), OPTIONAL, INTENT(IN) :: componentType !<The components type to interpolate
     !Local Variables
     INTEGER(INTG) :: component_idx,local_derivative_idx,version_idx,global_derivative_idx,element_node_idx,node_idx, &
-      & element_parameter_idx,dof_idx,node_scaling_dof_idx,scaling_idx,startComponentIdx,endComponentIdx, num_gauss_pts, &
-      & gauss_idx
+      & element_parameter_idx,dof_idx,node_scaling_dof_idx,scaling_idx,startComponentIdx,endComponentIdx
     REAL(DP), POINTER :: FIELD_PARAMETER_SET_DATA(:),SCALE_FACTORS(:)
     TYPE(BASIS_TYPE), POINTER :: BASIS
     TYPE(COORDINATE_SYSTEM_TYPE), POINTER :: COORDINATE_SYSTEM
@@ -7861,15 +7860,7 @@ CONTAINS
                     CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                   END SELECT
                 CASE(FIELD_GAUSS_POINT_BASED_INTERPOLATION)
-                  num_gauss_pts = INTERPOLATION_PARAMETERS%FIELD_VARIABLE%COMPONENTS(component_idx)%PARAM_TO_DOF_MAP% &
-                    & GAUSS_POINT_PARAM2DOF_MAP%NUMBER_OF_GAUSS_POINT_PARAMETERS
-                  num_gauss_pts = num_gauss_pts/INTERPOLATION_PARAMETERS%FIELD_VARIABLE%NUMBER_OF_COMPONENTS
-                  INTERPOLATION_PARAMETERS%NUMBER_OF_PARAMETERS(component_idx)=num_gauss_pts
-                  DO gauss_idx=1,num_gauss_pts
-                    dof_idx = INTERPOLATION_PARAMETERS%FIELD_VARIABLE%COMPONENTS(component_idx)%PARAM_TO_DOF_MAP% &
-                    & GAUSS_POINT_PARAM2DOF_MAP%GAUSS_POINTS(gauss_idx,1)
-                    INTERPOLATION_PARAMETERS%PARAMETERS(gauss_idx, component_idx)=FIELD_PARAMETER_SET_DATA(dof_idx)
-                  ENDDO
+                  CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
                 CASE(FIELD_DATA_POINT_BASED_INTERPOLATION)
                   CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
                 CASE DEFAULT
