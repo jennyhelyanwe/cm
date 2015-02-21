@@ -2383,7 +2383,7 @@ CONTAINS
     EQUATIONS=>EQUATIONS_SET%EQUATIONS
     EQUATIONS_MATRICES=>EQUATIONS%EQUATIONS_MATRICES
     NONLINEAR_MATRICES=>EQUATIONS_MATRICES%NONLINEAR_MATRICES
-    !EQUATIONS_RHS=>EQUATIONS_MATRICES%RHS_VECTOR
+    EQUATIONS_RHS=>EQUATIONS_MATRICES%RHS_VECTOR
     IF(.NOT.ASSOCIATED(NONLINEAR_MATRICES)) THEN
       CALL FlagError("Equations nonlinear matrices is not associated.",err,error,*999)
     END IF
@@ -2491,6 +2491,11 @@ CONTAINS
                   element_dof_idx=element_base_dof_idx+parameter_idx
                   NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx)=&
                     & NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(element_dof_idx) - &  ! sign: negative as p(appl) always opposite to normal
+                    & GAUSS_WEIGHT*PRESSURE_GAUSS*NORMAL_PROJECTION* &
+                    & FACE_QUADRATURE_SCHEME%GAUSS_BASIS_FNS(face_parameter_idx,NO_PART_DERIV,gauss_idx)* &
+                    & SQRT_G
+		  EQUATIONS_RHS%ELEMENT_VECTOR%VECTOR(element_dof_idx)= &
+                    & EQUATIONS_RHS%ELEMENT_VECTOR%VECTOR(element_dof_idx)- &  ! sign: negative as p(appl) always opposite to normal
                     & GAUSS_WEIGHT*PRESSURE_GAUSS*NORMAL_PROJECTION* &
                     & FACE_QUADRATURE_SCHEME%GAUSS_BASIS_FNS(face_parameter_idx,NO_PART_DERIV,gauss_idx)* &
                     & SQRT_G
