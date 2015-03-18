@@ -2494,11 +2494,6 @@ CONTAINS
                     & GAUSS_WEIGHT*PRESSURE_GAUSS*NORMAL_PROJECTION* &
                     & FACE_QUADRATURE_SCHEME%GAUSS_BASIS_FNS(face_parameter_idx,NO_PART_DERIV,gauss_idx)* &
                     & SQRT_G
-		  EQUATIONS_RHS%ELEMENT_VECTOR%VECTOR(element_dof_idx)= &
-                    & EQUATIONS_RHS%ELEMENT_VECTOR%VECTOR(element_dof_idx)- &  ! sign: negative as p(appl) always opposite to normal
-                    & GAUSS_WEIGHT*PRESSURE_GAUSS*NORMAL_PROJECTION* &
-                    & FACE_QUADRATURE_SCHEME%GAUSS_BASIS_FNS(face_parameter_idx,NO_PART_DERIV,gauss_idx)* &
-                    & SQRT_G
                 ENDDO !node_derivative_idx
               ENDDO !face_node_idx
 
