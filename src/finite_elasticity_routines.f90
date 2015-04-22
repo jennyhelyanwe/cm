@@ -786,13 +786,7 @@ CONTAINS
       !Do push-forward of 2nd Piola tensor and the material elasticity tensor. 
       CALL FINITE_ELASTICITY_PUSH_STRESS_TENSOR(STRESS_TENSOR,MOD_DZDNU,Jznu,ERR,ERROR,*999)
       CALL FINITE_ELASTICITY_PUSH_ELASTICITY_TENSOR(ELASTICITY_TENSOR,MOD_DZDNU,Jznu,ERR,ERROR,*999)
-      !CALL FINITE_ELASTICITY_PUSH_STRESS_TENSOR(STRESS_TENSOR,DZDNU,Jznu,ERR,ERROR,*999)
-      !CALL FINITE_ELASTICITY_PUSH_ELASTICITY_TENSOR(ELASTICITY_TENSOR,DZDNU,Jznu,ERR,ERROR,*999)
-      
       TRACE=SUM(STRESS_TENSOR(1:3))
-      !Calculate isochoric Cauchy tensor (the deviatoric part) and volumetric part (hydrostatic pressure).
-      STRESS_TENSOR(1:3)=STRESS_TENSOR(1:3)-ONETHIRD*TRACE
-
       TWOTHIRDS_TRACE=TWOTHIRDS*TRACE
       DO i=1,6
         ELASTICITY_TENSOR(i,i)=ELASTICITY_TENSOR(i,i)+TWOTHIRDS_TRACE*UNITY_DIAGONAL(i)
@@ -804,8 +798,12 @@ CONTAINS
             & (TWOTHIRDS_UNITY(i)*STRESS_TENSOR(j)+TWOTHIRDS_UNITY(j)*STRESS_TENSOR(i))
         ENDDO
       ENDDO
+
+      !Calculate isochoric Cauchy tensor (the deviatoric part) and volumetric part (hydrostatic pressure).
+      STRESS_TENSOR(1:3)=STRESS_TENSOR(1:3)-ONETHIRD*TRACE   
       !Add volumetric parts.
       STRESS_TENSOR(1:3)=STRESS_TENSOR(1:3)+P
+
       ELASTICITY_TENSOR(1,1)=ELASTICITY_TENSOR(1,1)-P
       ELASTICITY_TENSOR(2,2)=ELASTICITY_TENSOR(2,2)-P
       ELASTICITY_TENSOR(3,3)=ELASTICITY_TENSOR(3,3)-P
@@ -4200,12 +4198,16 @@ CONTAINS
           STRESS_TENSOR(component_idx)=STRESS_TENSOR(component_idx)+VALUE
         ENDDO
       ENDIF
-      ! Do push-forward of 2nd Piola tensor. 
+
+      ! Do push-forward of 2nd Piola tensor to isochoric Cauchy tensor.
       CALL FINITE_ELASTICITY_PUSH_STRESS_TENSOR(STRESS_TENSOR,MOD_DZDNU,Jznu,ERR,ERROR,*999)
-      !CALL FINITE_ELASTICITY_PUSH_STRESS_TENSOR(STRESS_TENSOR,DZDNU,Jznu,ERR,ERROR,*999)
-      !Calculate isochoric Cauchy tensor (the deviatoric part) and add the volumetric part (the hydrostatic pressure).
+
+      ! Evaluate the contraction of projection tensor Cauchy tensor to get isochoric Cauchy tensor. 
       ONETHIRD_TRACE=SUM(STRESS_TENSOR(1:3))/3.0_DP
-      STRESS_TENSOR(1:3)=STRESS_TENSOR(1:3)-ONETHIRD_TRACE+P
+      STRESS_TENSOR(1:3)=STRESS_TENSOR(1:3)-ONETHIRD_TRACE 
+
+      !Add the Cauchy volumetric part (the hydrostatic pressure).
+      STRESS_TENSOR(1:3)=STRESS_TENSOR(1:3)+P
     CASE DEFAULT
       LOCAL_ERROR="Equations set subtype "//TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET%SUBTYPE,"*",ERR,ERROR))// &
         & " is not valid for a finite elasticity equation type of an elasticity equation set class."

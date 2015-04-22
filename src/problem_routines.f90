@@ -4283,7 +4283,7 @@ SUBROUTINE ProblemSolver_ConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,f
   TYPE(NEWTON_SOLVER_TYPE), POINTER :: newtonSolver
   TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: nonlinearSolver
   TYPE(PetscSnesLinesearchType) :: lineSearch
-  REAL(DP) :: energy,normalisedEnergy
+  REAL(DP) :: energy,normalisedEnergy,lambda
   TYPE(VARYING_STRING) :: error,localError
 
   IF(ASSOCIATED(ctx)) THEN
@@ -4294,25 +4294,40 @@ SUBROUTINE ProblemSolver_ConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,f
         reason=PETSC_SNES_CONVERGED_ITERATING
         SELECT CASE(newtonSolver%convergenceTestType)
         CASE(SOLVER_NEWTON_CONVERGENCE_ENERGY_NORM) 
-          convergenceTest=>newtonSolver%convergenceTest
-        IF((iterationNumber==0) .OR. (convergenceTest%energyFirstIter==0.0_DP)) THEN
-          convergenceTest%energyFirstIter=0.0_DP
-          convergenceTest%normalisedEnergy=0.0_DP
-          convergenceTest%converged=.FALSE.
-          DO dofIdx=1,SIZE(f)
-            convergenceTest%energyFirstIter=convergenceTest%energyFirstIter+f(dofIdx)*y(dofIdx)
-          ENDDO
-          convergenceTest%energyFirstIter=ABS(convergenceTest%energyFirstIter*(-lambda))
-        ELSE  !At 1st iter linesearch
-          convergenceTest%normalisedEnergy=0.0_DP
-          DO dofIdx=1,SIZE(f)
-            convergenceTest%normalisedEnergy=convergenceTest%normalisedEnergy+f(dofIdx)*y(dofIdx)
-          ENDDO
-          convergenceTest%normalisedEnergy= &
-            & ABS(convergenceTest%normalisedEnergy*(-lambda))/convergenceTest%energyFirstIter
-          IF(convergenceTest%normalisedEnergy<newtonSolver%ABSOLUTE_TOLERANCE*newtonSolver%SOLUTION_TOLERANCE) &
-            & convergenceTest%converged=.TRUE.  
-        ENDIF
+          IF(iterationNumber>0) THEN
+            CALL Petsc_SnesLineSearchInitialise(lineSearch,err,error,*999)
+            CALL Petsc_SnesGetSnesLineSearch(snes,lineSearch,err,error,*999)
+            CALL PETSC_VECINITIALISE(x,err,error,*999)
+            CALL PETSC_VECINITIALISE(f,err,error,*999)
+            CALL PETSC_VECINITIALISE(y,err,error,*999)
+            CALL PETSC_VECINITIALISE(w,err,error,*999)
+            CALL PETSC_VECINITIALISE(g,err,error,*999)
+            CALL Petsc_SnesLineSearchGetVecs(lineSearch,x,f,y,w,g,err,error,*999)
+            ! ZJW Dot product the residual vector (f) and the solution increment (y)
+            CALL Petsc_VecDot(f,y,energy,err,error,*999)
+            CALL Petsc_SnesLineSearchGetLambda(lineSearch, lambda, err, error, *999)
+            energy = ABS(energy*(-lambda))
+            IF(iterationNumber==1) THEN
+              IF(ABS(energy)<ZERO_TOLERANCE) THEN
+                reason=PETSC_SNES_CONVERGED_FNORM_ABS
+              ELSE
+                newtonSolver%convergenceTest%energyFirstIter=energy
+              ENDIF
+            ELSE
+              normalisedEnergy=energy/newtonSolver%convergenceTest%energyFirstIter
+              newtonSolver%convergenceTest%normalisedEnergy=normalisedEnergy
+              IF(ABS(normalisedEnergy)<newtonSolver%ABSOLUTE_TOLERANCE*newtonSolver%SOLUTION_TOLERANCE) THEN
+                reason=PETSC_SNES_CONVERGED_FNORM_ABS
+              ENDIF
+              CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,"*********************************************",err,error,*999)
+              CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"Normalised energy = ",normalisedEnergy,err,error,*999)
+              CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,"*********************************************",err,error,*999)
+            ENDIF
+            CALL Petsc_SnesLineSearchFinalise(lineSearch,err,error,*999)
+          ELSE
+            newtonSolver%convergenceTest%energyFirstIter=0.0_DP
+            newtonSolver%convergenceTest%normalisedEnergy=0.0_DP
+          ENDIF
         CASE(SOLVER_NEWTON_CONVERGENCE_DIFFERENTIATED_RATIO)
           CALL FLAG_ERROR("Differentiated ratio convergence test not implemented.",err,error,*999)
         CASE DEFAULT
