@@ -2155,7 +2155,7 @@ CONTAINS
       ALLOCATE(vector(size(values)+size(C)))
       vector(1:size(values)) = values
       vector(size(values)+1:size(values)+size(C))= C
-      !IF(ASSOCIATED(cellML)) THEN
+      IF(ASSOCIATED(cellML)) THEN
         model=>cellML%models(1)%ptr
         CALL CELLML_MODEL_DEFINITION_CALL_RHS_ROUTINE(model%ptr,0.0_DP,states,rates,stress2PK,vector)
         ! Add hydrostatic pressure.
@@ -2175,10 +2175,10 @@ CONTAINS
         PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
         PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
         PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
-      !ELSE
-      !  local_error="The cellML environment is not associated."
-      !  CALL flag_error(local_error,err,error,*999)
-      !ENDIF
+      ELSE
+        local_error="The cellML environment is not associated."
+        CALL flag_error(local_error,err,error,*999)
+      ENDIF
     ELSE
       C => MATERIALS_INTERPOLATED_POINT%interpolation_parameters%parameters(1,:)
       CALL FINITE_ELASTICITY_PIOLA_CAUCHY_STRESS_EVALUATE(equationsSet%subType,C,MATERIALS_INTERPOLATED_POINT,&
